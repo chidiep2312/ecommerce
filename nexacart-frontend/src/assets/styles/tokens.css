@@ -1,0 +1,82 @@
+:root {
+    /* Brand */
+    --color-primary-50: #f7f5ff;
+    --color-primary-100: #eee9ff;
+    --color-primary-200: #ddd4ff;
+    --color-primary-300: #b4ffb1;
+    --color-primary-400: #81ff9c;
+    --color-primary-500: #57f3a5;
+    --color-primary-600: #38d67f;
+    --color-primary-700: #2caf63;
+    --color-primary-800: #278e52;
+    --color-primary-900: #23743e;
+
+    /* Neutral */
+    --color-white: #ffffff;
+    --color-gray-50: #fafafa;
+    --color-gray-100: #f4f4f5;
+    --color-gray-200: #e4e4e7;
+    --color-gray-300: #d4d4d8;
+    --color-gray-400: #a1a1aa;
+    --color-gray-500: #71717a;
+    --color-gray-600: #52525b;
+    --color-gray-700: #3f3f46;
+    --color-gray-800: #27272a;
+    --color-gray-900: #18181b;
+    --color-gray-950: #09090b;
+
+    /* Semantic */
+    --color-success: #16835d;
+    --color-warning: #a15c08;
+    --color-danger: #c9364b;
+    --color-info: #2563a7;
+
+    /* Background */
+    --color-page: #f8f7fb;
+    --color-surface: #ffffff;
+    --color-surface-subtle: #f4f1fa;
+
+    /* Text */
+    --color-text-primary: #201c29;
+    --color-text-secondary: #625d6d;
+    --color-text-muted: #8a8494;
+
+    /* Border */
+    --color-border: #e6e2eb;
+    --color-border-strong: #d5cfdd;
+
+    /* Shadows */
+    --shadow-xs: 0 1px 2px rgb(29 20 43 / 5%);
+    --shadow-sm:
+        0 1px 3px rgb(29 20 43 / 8%),
+        0 1px 2px rgb(29 20 43 / 4%);
+    --shadow-md:
+        0 8px 24px rgb(45 27 72 / 8%),
+        0 2px 6px rgb(45 27 72 / 4%);
+
+    /* Radius */
+    --radius-sm: 0;
+    --radius-md: 0;
+    --radius-lg: 0;
+
+    /* Layout */
+    --sidebar-width: 256px;
+    --sidebar-collapsed-width: 80px;
+    --navbar-height: 68px;
+    --content-max-width: 1440px;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+
+    /* Motion */
+    --transition-fast: 140ms ease;
+    --transition-base: 220ms ease;
+}
