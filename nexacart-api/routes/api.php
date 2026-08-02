@@ -32,9 +32,9 @@ use App\Http\Controllers\Api\V1\SellerVoucherUsageController;
 |
 */
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});
+// Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+//     return $request->user();
+// });
 
 Route::prefix('v1')->group(function () {
 
@@ -59,8 +59,8 @@ Route::prefix('v1')->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
     /*
     |--------------------------------------------------------------------------
@@ -395,10 +395,6 @@ Route::prefix('v1')->group(function () {
             CategoryController::class,
             'destroy',
         ]);
-        Route::apiResource(
-            'vouchers',
-            VoucherController::class
-        );
         Route::get('/orders', [
             OrderController::class,
             'adminIndex',

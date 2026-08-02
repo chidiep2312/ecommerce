@@ -15,6 +15,8 @@ use App\Models\User;
 use App\Models\Voucher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 
 class CheckoutService
 {
@@ -84,7 +86,40 @@ class CheckoutService
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
+            $resolvedSellerIds = $lockedProducts
+                ->pluck('seller_id')
+                ->map(fn($sellerId) => (int) $sellerId)
+                ->unique()
+                ->values();
 
+            if ($resolvedSellerIds->count() !== 1) {
+                throw new ProductUnavailableException(
+                    'Một đơn hàng chỉ được chứa sản phẩm của một người bán.'
+                );
+            }
+
+            $resolvedSellerId = (int) $resolvedSellerIds->first();
+
+            if ($resolvedSellerId !== (int) $data['seller_id']) {
+                throw new ProductUnavailableException(
+                    'Người bán không khớp với sản phẩm trong giỏ hàng.'
+                );
+            }
+
+            $seller = User::query()
+                ->whereKey($resolvedSellerId)
+                ->lockForUpdate()
+                ->first();
+
+            if (
+                $seller === null ||
+                $seller->role !== UserRole::Seller ||
+                $seller->status !== UserStatus::Active
+            ) {
+                throw new ProductUnavailableException(
+                    'Người bán hiện không còn hoạt động.'
+                );
+            }
             /*
              * Kiểm tra lại Product và tồn kho.
              *
@@ -200,7 +235,7 @@ class CheckoutService
              */
             $order = Order::query()->create([
                 'user_id' => $user->id,
-                'seller_id' => $data['seller_id'],
+                'seller_id' => $resolvedSellerId,
                 'voucher_id' => $voucher?->id,
                 'order_code' => $this->generateOrderCode(),
                 'subtotal' => $subtotal,
