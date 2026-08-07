@@ -4,28 +4,76 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class CartItemResource extends JsonResource
 {
-  public function toArray(Request $request): array
-{
-    $product = $this->resource
-        ->relationLoaded('product')
-            ? $this->product
-            : null;
+    public function toArray(
+        Request $request
+    ): array {
+        $product = $this->product;
 
-    $unitPrice = $product !== null
-        ? (float) $product->effective_price
-        : 0;
+        return [
+            /*
+             * cart_items.id
+             */
+            'id' => $this->id,
 
-    return [
-        'id' => $this->id,
-        'quantity' => $this->quantity,
-        'unit_price' => $unitPrice,
-        'line_total' => $unitPrice * $this->quantity,
-        'product' => $product !== null
-            ? new ProductResource($product)
-            : null,
-    ];
-}
+            'product_id' =>
+                $this->product_id,
+
+            'quantity' =>
+                $this->quantity,
+
+            'product' => [
+                'id' => $product->id,
+
+                /*
+                 * Bắt buộc có seller_id.
+                 */
+                'seller_id' =>
+                    $product->seller_id,
+
+                'name' =>
+                    $product->name,
+
+                'slug' =>
+                    $product->slug,
+
+                'price' =>
+                    $product->price,
+
+                'sale_price' =>
+                    $product->sale_price,
+
+                'effective_price' =>
+                    $product->effective_price,
+
+                'stock' =>
+                    $product->stock,
+
+                'image' =>
+                    $product->mainImage
+                        ? Storage::url(
+                            $product
+                                ->mainImage
+                                ->path
+                        )
+                        : null,
+
+                /*
+                 * Trả thêm thông tin seller.
+                 */
+                'seller' => $product->seller
+                    ? [
+                        'id' =>
+                            $product->seller->id,
+
+                        'name' =>
+                            $product->seller->name,
+                    ]
+                    : null,
+            ],
+        ];
+    }
 }

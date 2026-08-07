@@ -20,8 +20,8 @@ class ProductRepository implements ProductRepositoryInterface
                 'brand:id,name,slug',
                 'seller:id,name',
                   'mainImage:id,product_id,path,is_main,sort_order',
-            ])->withAvg('reviews', 'rating')->withCount('reviews');
-
+            ]);
+        // ->withAvg('reviews')->withCount('reviews')
         $this->applyFilters($query, $filters);
         $this->applySort($query, $filters['sort'] ?? null);
 

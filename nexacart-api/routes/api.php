@@ -53,6 +53,8 @@ Route::prefix('v1')->group(function () {
         '/products/{product:slug}/reviews',
         [ReviewController::class, 'index']
     );
+
+     
     /*
     |--------------------------------------------------------------------------
     | Public authentication routes
@@ -185,6 +187,10 @@ Route::prefix('v1')->group(function () {
             '/products/{product}/reviews',
             [ReviewController::class, 'store']
         );
+        Route::get(
+            '/products',
+            [ProductController::class, 'index']
+        );
 
         Route::patch(
             '/reviews/{review}',
@@ -195,6 +201,8 @@ Route::prefix('v1')->group(function () {
             '/reviews/{review}',
             [ReviewController::class, 'destroy']
         );
+
+      
     });
 
 

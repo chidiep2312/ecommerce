@@ -18,14 +18,14 @@ class AdminProductResource extends JsonResource
 
             'sku' => $this->sku,
 
-            'price' => (float) $this->price,
+            'price' =>  $this->price,
 
             'sale_price' => $this->sale_price !== null
-                ? (float) $this->sale_price
+                ?  $this->sale_price
                 : null,
 
             'effective_price'
-            => (float) $this->effective_price,
+            => $this->effective_price,
 
             'stock' => $this->stock,
 

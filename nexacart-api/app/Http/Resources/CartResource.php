@@ -13,7 +13,7 @@ class CartResource extends JsonResource
 
         $subtotal = $this->items->sum(
             function ($item) {
-                return (float) $item
+                return $item
                     ->product
                     ->effective_price
                     * $item->quantity;

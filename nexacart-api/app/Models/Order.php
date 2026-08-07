@@ -16,6 +16,7 @@ class Order extends Model
         'user_id',
         'voucher_id',
         'order_code',
+        'idempotency_key',
         'seller_id',
         'subtotal',
         'discount_amount',

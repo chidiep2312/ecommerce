@@ -20,6 +20,7 @@ class CartService
         return $cart->load([
             'items.product.category:id,name,slug',
             'items.product.brand:id,name,slug',
+            'items.product.seller:id,name',
             'items.product.mainImage:id,product_id,path,is_main,sort_order',
         ]);
     }

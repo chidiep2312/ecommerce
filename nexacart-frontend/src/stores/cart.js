@@ -1,258 +1,490 @@
-import { computed, ref } from 'vue'
+import {
+    computed,
+    ref,
+} from 'vue'
+
 import { defineStore } from 'pinia'
 
-import { STORAGE_KEYS } from '@/constants/storage'
+import {
+    clearCustomerCart,
+    createCartItem,
+    deleteCartItem,
+    getCart,
+    updateCartItem,
+} from '@/api/cart'
 
-function readStoredCart() {
-    try {
-        const storedValue = localStorage.getItem(
-            STORAGE_KEYS.CART_ITEMS,
-        )
 
-        if (!storedValue) {
-            return []
-        }
+function normalizeCartItem(rawItem) {
+    const product =
+        rawItem.product?.data ??
+        rawItem.product ??
+        {}
 
-        const parsedValue = JSON.parse(storedValue)
+    const seller =
+        product.seller?.data ??
+        product.seller ??
+        rawItem.seller ??
+        {}
 
-        return Array.isArray(parsedValue)
-            ? parsedValue
-            : []
-    } catch (error) {
+    const sellerId = Number(
+        rawItem.seller_id ??
+        product.seller_id ??
+        seller.id,
+    )
+
+    if (
+        !Number.isInteger(sellerId) ||
+        sellerId <= 0
+    ) {
         console.error(
-            'Không thể đọc dữ liệu giỏ hàng:',
-            error,
+            'Cart item thiếu seller_id:',
+            {
+                rawItem,
+                product,
+                seller,
+            },
         )
+    }
 
-        return []
+    return {
+        id: Number(rawItem.id),
+
+        product_id: Number(
+            rawItem.product_id ??
+            product.id,
+        ),
+
+        seller_id: sellerId,
+
+        slug:
+            product.slug ??
+            rawItem.slug ??
+            '',
+
+        name:
+            product.name ??
+            rawItem.name ??
+            'Sản phẩm',
+
+        image:
+            product.image ??
+            product.main_image ??
+            product.mainImage?.url ??
+            product.mainImage?.path ??
+            '',
+
+        price: Number(
+            product.effective_price ??
+            product.sale_price ??
+            product.price ??
+            0,
+        ),
+
+        originalPrice:
+            product.sale_price
+                ? Number(product.price)
+                : null,
+
+        stock: Number(
+            product.stock ?? 0,
+        ),
+
+        seller: {
+            id: sellerId,
+
+            name:
+                seller.name ??
+                rawItem.seller_name ??
+                `Người bán #${sellerId}`,
+        },
+
+        quantity: Number(
+            rawItem.quantity ?? 1,
+        ),
     }
 }
 
 export const useCartStore = defineStore(
     'cart',
     () => {
-        const items = ref(readStoredCart())
+        const items = ref([])
+        const isLoading = ref(false)
+        const cartError = ref('')
 
         const itemCount = computed(() => {
             return items.value.reduce(
                 (total, item) => {
-                    return total + item.quantity
+                    return (
+                        total +
+                        Number(item.quantity)
+                    )
                 },
                 0,
             )
         })
 
-        const uniqueItemCount = computed(() => {
-            return items.value.length
-        })
+        const uniqueItemCount =
+            computed(() => {
+                return items.value.length
+            })
 
         const subtotal = computed(() => {
             return items.value.reduce(
                 (total, item) => {
                     return (
                         total +
-                        item.price * item.quantity
+                        Number(item.price) *
+                        Number(item.quantity)
                     )
                 },
                 0,
             )
         })
 
-        const originalSubtotal = computed(() => {
-            return items.value.reduce(
-                (total, item) => {
-                    const originalPrice =
-                        item.originalPrice ??
-                        item.price
+        const originalSubtotal =
+            computed(() => {
+                return items.value.reduce(
+                    (total, item) => {
+                        const price =
+                            item.originalPrice ??
+                            item.price
 
-                    return (
-                        total +
-                        originalPrice *
-                            item.quantity
-                    )
-                },
-                0,
-            )
-        })
+                        return (
+                            total +
+                            Number(price) *
+                            Number(item.quantity)
+                        )
+                    },
+                    0,
+                )
+            })
 
-        const discountAmount = computed(() => {
-            return Math.max(
-                0,
-                originalSubtotal.value -
+        const discountAmount =
+            computed(() => {
+                return Math.max(
+                    0,
+                    originalSubtotal.value -
                     subtotal.value,
-            )
-        })
+                )
+            })
 
         const isEmpty = computed(() => {
             return items.value.length === 0
         })
 
-        function persistCart() {
+        function extractCartItems(response) {
+            const responseData =
+                response.data?.data ??
+                response.data
+
+            if (Array.isArray(responseData)) {
+                return responseData
+            }
+
+            if (
+                Array.isArray(
+                    responseData?.items,
+                )
+            ) {
+                return responseData.items
+            }
+
+            return []
+        }
+        function syncCartFromResponse(response) {
+            const cartItems =
+                extractCartItems(response)
+
+            items.value = cartItems.map(
+                normalizeCartItem,
+            )
+
+            return items.value
+        }
+
+        async function fetchCart() {
+            isLoading.value = true
+            cartError.value = ''
+
             try {
-                localStorage.setItem(
-                    STORAGE_KEYS.CART_ITEMS,
-                    JSON.stringify(items.value),
-                )
+                const response =
+                    await getCart()
+
+                syncCartFromResponse(response)
             } catch (error) {
-                console.error(
-                    'Không thể lưu giỏ hàng:',
-                    error,
-                )
+                cartError.value =
+                    error.response?.data?.message ??
+                    'Không thể tải giỏ hàng.'
+
+                throw error
+            } finally {
+                isLoading.value = false
             }
         }
 
-        function findItem(productId) {
-            return items.value.find((item) => {
-                return item.id === productId
-            })
+        function findItem(cartItemId) {
+            return items.value.find(
+                (item) => {
+                    return (
+                        item.id ===
+                        Number(cartItemId)
+                    )
+                },
+            )
         }
 
-        function addItem(product, quantity = 1) {
-            const safeQuantity = Math.max(
-                1,
-                Number(quantity) || 1,
-            )
-
-            const existingItem = findItem(
-                product.id,
-            )
-
-            if (existingItem) {
-                const nextQuantity =
-                    existingItem.quantity +
-                    safeQuantity
-
-                existingItem.quantity =
-                    product.stock !== undefined
-                        ? Math.min(
-                              nextQuantity,
-                              product.stock,
-                          )
-                        : nextQuantity
-
-                persistCart()
-
-                return
-            }
-
-            items.value.push({
-                id: product.id,
-                slug: product.slug,
-                name: product.name,
-                image:
-                    product.image ??
-                    product.images?.[0] ??
-                    '',
-                price: Number(product.price),
-                originalPrice:
-                    product.originalPrice
-                        ? Number(
-                              product.originalPrice,
-                          )
-                        : null,
-                stock:
-                    product.stock !== undefined
-                        ? Number(product.stock)
-                        : null,
-                seller:
-                    product.seller?.name ??
-                    product.seller ??
-                    null,
-                quantity:
-                    product.stock !== undefined
-                        ? Math.min(
-                              safeQuantity,
-                              product.stock,
-                          )
-                        : safeQuantity,
-            })
-
-            persistCart()
-        }
-
-        function updateQuantity(
+        function findItemByProductId(
             productId,
-            quantity,
         ) {
-            const item = findItem(productId)
+            return items.value.find(
+                (item) => {
+                    return (
+                        item.product_id ===
+                        Number(productId)
+                    )
+                },
+            )
+        }
 
-            if (!item) {
-                return
-            }
+        async function addItem(
+            productId,
+            quantity = 1,
+        ) {
+            cartError.value = ''
 
-            const numericQuantity =
+            const normalizedProductId =
+                Number(productId)
+
+            const normalizedQuantity =
                 Number(quantity)
 
             if (
-                Number.isNaN(numericQuantity) ||
-                numericQuantity <= 0
+                !Number.isInteger(
+                    normalizedProductId,
+                ) ||
+                normalizedProductId <= 0
             ) {
-                removeItem(productId)
+                throw new Error(
+                    'Product ID không hợp lệ.',
+                )
+            }
+
+            if (
+                !Number.isInteger(
+                    normalizedQuantity,
+                ) ||
+                normalizedQuantity <= 0
+            ) {
+                throw new Error(
+                    'Số lượng không hợp lệ.',
+                )
+            }
+
+            try {
+                const response =
+                    await createCartItem({
+                        product_id:
+                            normalizedProductId,
+
+                        quantity:
+                            normalizedQuantity,
+                    })
+
+                /*
+                 * Backend trả về toàn bộ Cart,
+                 * nên phải thay toàn bộ items
+                 * bằng cart.items từ response.
+                 */
+                syncCartFromResponse(
+                    response,
+                )
+
+                return findItemByProductId(
+                    normalizedProductId,
+                )
+            } catch (error) {
+                cartError.value =
+                    error.response?.data?.message ??
+                    'Không thể thêm sản phẩm vào giỏ hàng.'
+
+                throw error
+            }
+        }
+
+        async function setQuantity(
+            cartItemId,
+            quantity,
+        ) {
+            const normalizedCartItemId =
+                Number(cartItemId)
+
+            const normalizedQuantity =
+                Number(quantity)
+
+            if (
+                !Number.isInteger(
+                    normalizedCartItemId,
+                ) ||
+                normalizedCartItemId <= 0 ||
+                !Number.isInteger(
+                    normalizedQuantity,
+                ) ||
+                normalizedQuantity <= 0
+            ) {
                 return
             }
 
-            const maximum =
-                item.stock ?? Number.MAX_SAFE_INTEGER
+            try {
+                const response =
+                    await updateCartItem(
+                        normalizedCartItemId,
+                        {
+                            quantity:
+                                normalizedQuantity,
+                        },
+                    )
 
-            item.quantity = Math.min(
-                Math.max(1, numericQuantity),
-                maximum,
-            )
+                /*
+                 * Backend trả toàn bộ Cart.
+                 */
+                syncCartFromResponse(
+                    response,
+                )
+            } catch (error) {
+                cartError.value =
+                    error.response?.data?.message ??
+                    'Không thể cập nhật số lượng.'
 
-            persistCart()
+                throw error
+            }
         }
 
-        function increaseQuantity(productId) {
-            const item = findItem(productId)
+        async function increaseQuantity(
+            cartItemId,
+        ) {
+            const item =
+                findItem(cartItemId)
 
             if (!item) {
                 return
             }
 
-            updateQuantity(
-                productId,
+            if (
+                item.stock !== null &&
+                item.quantity >= item.stock
+            ) {
+                return
+            }
+
+            await setQuantity(
+                cartItemId,
                 item.quantity + 1,
             )
         }
 
-        function decreaseQuantity(productId) {
-            const item = findItem(productId)
+        async function decreaseQuantity(
+            cartItemId,
+        ) {
+            const item =
+                findItem(cartItemId)
 
-            if (!item) {
+            if (
+                !item ||
+                item.quantity <= 1
+            ) {
                 return
             }
 
-            if (item.quantity <= 1) {
-                return
-            }
-
-            updateQuantity(
-                productId,
+            await setQuantity(
+                cartItemId,
                 item.quantity - 1,
             )
         }
+        async function removeItem(
+            cartItemId,
+        ) {
+            const normalizedCartItemId =
+                Number(cartItemId)
 
-        function removeItem(productId) {
-            items.value = items.value.filter(
-                (item) => {
-                    return item.id !== productId
-                },
+            if (
+                !Number.isInteger(
+                    normalizedCartItemId,
+                ) ||
+                normalizedCartItemId <= 0
+            ) {
+                return
+            }
+
+            try {
+                const response =
+                    await deleteCartItem(
+                        normalizedCartItemId,
+                    )
+
+                syncCartFromResponse(
+                    response,
+                )
+            } catch (error) {
+                cartError.value =
+                    error.response?.data?.message ??
+                    'Không thể xóa sản phẩm khỏi giỏ hàng.'
+
+                throw error
+            }
+        }
+        /*
+         * Dùng sau khi checkout thành công.
+         * Backend đã xóa CartItem trong database.
+         */
+        function removeItemsByIds(
+            cartItemIds,
+        ) {
+            const selectedIds =
+                new Set(
+                    cartItemIds.map(
+                        (itemId) =>
+                            Number(itemId),
+                    ),
+                )
+
+            items.value =
+                items.value.filter(
+                    (item) => {
+                        return (
+                            !selectedIds.has(
+                                item.id,
+                            )
+                        )
+                    },
+                )
+        }
+
+        async function clearCart() {
+            try {
+                await clearCustomerCart()
+
+                items.value = []
+            } catch (error) {
+                cartError.value =
+                    error.response?.data?.message ??
+                    'Không thể xóa giỏ hàng.'
+
+                throw error
+            }
+        }
+
+        function hasProduct(productId) {
+            return Boolean(
+                findItemByProductId(
+                    productId,
+                ),
             )
-
-            persistCart()
-        }
-
-        function clearCart() {
-            items.value = []
-            persistCart()
-        }
-
-        function hasItem(productId) {
-            return Boolean(findItem(productId))
         }
 
         return {
             items,
+            isLoading,
+            cartError,
 
             itemCount,
             uniqueItemCount,
@@ -261,13 +493,17 @@ export const useCartStore = defineStore(
             discountAmount,
             isEmpty,
 
+            fetchCart,
             addItem,
-            updateQuantity,
+            setQuantity,
             increaseQuantity,
             decreaseQuantity,
             removeItem,
+            removeItemsByIds,
             clearCart,
-            hasItem,
+            findItem,
+            findItemByProductId,
+            hasProduct,
         }
     },
 )

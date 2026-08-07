@@ -8,6 +8,7 @@ use App\Exceptions\InvalidVoucherException;
 use App\Models\User;
 use App\Models\Voucher;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Support\Money;
 
 class VoucherService
 {
@@ -108,7 +109,7 @@ class VoucherService
     public function validateForUser(
         User $user,
         string $code,
-        float $subtotal,
+        string $subtotal,
         bool $lockForUpdate = false
     ): array {
         $query = Voucher::query()
@@ -150,90 +151,119 @@ class VoucherService
         ];
     }
 
-    public function ensureVoucherIsUsable(
-        Voucher $voucher,
-        User $user,
-        float $subtotal
-    ): void {
-        if (
-            $voucher->status
-            !== VoucherStatus::Active
-        ) {
-            throw new InvalidVoucherException(
-                'Voucher hiện không hoạt động.'
-            );
-        }
-
-        if (! $voucher->isWithinValidPeriod()) {
-            throw new InvalidVoucherException(
-                'Voucher chưa bắt đầu hoặc đã hết hạn.'
-            );
-        }
-
-        if (! $voucher->hasAvailableUsage()) {
-            throw new InvalidVoucherException(
-                'Voucher đã hết lượt sử dụng.'
-            );
-        }
-
-        if (
-            $subtotal
-            < (float) $voucher->min_order_amount
-        ) {
-            throw new InvalidVoucherException(
-                'Đơn hàng chưa đạt giá trị tối thiểu để sử dụng voucher.'
-            );
-        }
-
-        if (
-            $voucher->usage_limit_per_user !== null
-        ) {
-            $usedByUser = $voucher
-                ->usages()
-                ->where('user_id', $user->id)
-                ->count();
-
-            if (
-                $usedByUser
-                >= $voucher->usage_limit_per_user
-            ) {
-                throw new InvalidVoucherException(
-                    'Bạn đã sử dụng hết lượt của voucher này.'
-                );
-            }
-        }
+  public function ensureVoucherIsUsable(
+    Voucher $voucher,
+    User $user,
+    string $subtotal
+): void {
+    if ($voucher->status !== VoucherStatus::Active) {
+        throw new InvalidVoucherException(
+            'Voucher hiện không hoạt động.'
+        );
     }
 
+    if (! $voucher->isWithinValidPeriod()) {
+        throw new InvalidVoucherException(
+            'Voucher chưa bắt đầu hoặc đã hết hạn.'
+        );
+    }
+
+    if (! $voucher->hasAvailableUsage()) {
+        throw new InvalidVoucherException(
+            'Voucher đã hết lượt sử dụng.'
+        );
+    }
+
+    if (
+        Money::compare(
+            $subtotal,
+            (string) $voucher->min_order_amount
+        ) < 0
+    ) {
+        throw new InvalidVoucherException(
+            'Đơn hàng chưa đạt giá trị tối thiểu để sử dụng voucher.'
+        );
+    }
+
+    if ($voucher->usage_limit_per_user !== null) {
+        $usedByUser = $voucher
+            ->usages()
+            ->where('user_id', $user->id)
+            ->count();
+
+        if (
+            $usedByUser
+            >= (int) $voucher->usage_limit_per_user
+        ) {
+            throw new InvalidVoucherException(
+                'Bạn đã sử dụng hết lượt của voucher này.'
+            );
+        }
+    }
+}
     public function calculateDiscount(
         Voucher $voucher,
-        float $subtotal
-    ): float {
-        if (
-            $voucher->type
-            === VoucherType::Fixed
-        ) {
-            return min(
-                (float) $voucher->value,
-                $subtotal
-            );
+        string $subtotal
+    ): string {
+        $scale = 2;
+
+        if ($voucher->type === VoucherType::Fixed) {
+            $voucherValue = (string) $voucher->value;
+
+            return bccomp(
+                $voucherValue,
+                $subtotal,
+                $scale
+            ) <= 0
+                ? $voucherValue
+                : $subtotal;
         }
 
-        $discount = $subtotal
-            * (float) $voucher->value
-            / 100;
+        /*
+     * subtotal × phần trăm / 100
+     *
+     * Dùng scale trung gian cao hơn để hạn chế mất
+     * phần thập phân trước khi chuẩn hóa về 2 số lẻ.
+     */
+        $discount = bcdiv(
+            bcmul(
+                $subtotal,
+                (string) $voucher->value,
+                4
+            ),
+            '100',
+            $scale
+        );
 
+        if ($voucher->max_discount_amount !== null) {
+            $maxDiscount = (string)
+            $voucher->max_discount_amount;
+
+            if (
+                bccomp(
+                    $discount,
+                    $maxDiscount,
+                    $scale
+                ) > 0
+            ) {
+                $discount = $maxDiscount;
+            }
+        }
+
+        /*
+     * Tiền giảm không được lớn hơn subtotal.
+     */
         if (
-            $voucher->max_discount_amount
-            !== null
-        ) {
-            $discount = min(
+            bccomp(
                 $discount,
-                (float) $voucher
-                    ->max_discount_amount
-            );
+                $subtotal,
+                $scale
+            ) > 0
+        ) {
+            return $subtotal;
         }
 
-        return min($discount, $subtotal);
+        return $discount;
     }
     private function applyEffectiveStatusFilter(
         $query,

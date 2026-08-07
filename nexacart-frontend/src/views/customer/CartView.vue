@@ -2,56 +2,496 @@
 import {
     ArrowLeft,
     ChevronRight,
+    CircleAlert,
     Minus,
     PackageOpen,
     Plus,
     ShieldCheck,
     ShoppingBag,
+    Store,
     Trash2,
     Truck,
 } from '@lucide/vue'
 
-import { computed } from 'vue'
+import {
+    computed,
+    ref,
+    watch,
+} from 'vue'
+
 import { useRouter } from 'vue-router'
 
 import { useCartStore } from '@/stores/cart'
 
+const CHECKOUT_CONTEXT_KEY =
+    'nexacart_checkout_context'
+
 const router = useRouter()
 const cartStore = useCartStore()
 
+const selectedItemIds = ref(
+    new Set(),
+)
+
+const selectionError = ref('')
+
+function normalizeItemId(itemId) {
+    return String(itemId)
+}
+
+function resolveSellerId(item) {
+    const sellerId = Number(
+        item.seller_id ??
+        item.seller?.id,
+    )
+
+    if (
+        !Number.isInteger(sellerId) ||
+        sellerId <= 0
+    ) {
+        return null
+    }
+
+    return sellerId
+}
+
+function resolveSellerName(item) {
+    if (
+        typeof item.seller ===
+        'string'
+    ) {
+        return item.seller
+    }
+
+    return (
+        item.seller?.name ??
+        `Người bán #${resolveSellerId(item)}`
+    )
+}
+
+/*
+ * Khi giỏ hàng thay đổi:
+ * - Giữ lại các lựa chọn còn tồn tại.
+ * - Loại bỏ ID đã bị xóa khỏi giỏ.
+ * - Không tự động chọn tất cả sản phẩm.
+ */
+watch(
+    () => {
+        return cartStore.items
+            .map((item) => {
+                return normalizeItemId(
+                    item.id,
+                )
+            })
+            .sort()
+            .join('|')
+    },
+    () => {
+        const validIds = new Set(
+            cartStore.items.map(
+                (item) => {
+                    return normalizeItemId(
+                        item.id,
+                    )
+                },
+            ),
+        )
+
+        selectedItemIds.value = new Set(
+            [
+                ...selectedItemIds.value,
+            ].filter((itemId) => {
+                return validIds.has(
+                    itemId,
+                )
+            }),
+        )
+    },
+    {
+        immediate: true,
+    },
+)
+
+const sellerGroups = computed(() => {
+    const groups = new Map()
+
+    cartStore.items.forEach((item) => {
+        const sellerId =
+            resolveSellerId(item)
+
+        const groupKey =
+            sellerId === null
+                ? 'unknown'
+                : String(sellerId)
+
+        if (!groups.has(groupKey)) {
+            groups.set(groupKey, {
+                key: groupKey,
+                sellerId,
+                sellerName:
+                    resolveSellerName(
+                        item,
+                    ),
+                items: [],
+            })
+        }
+
+        groups
+            .get(groupKey)
+            .items.push(item)
+    })
+
+    return [
+        ...groups.values(),
+    ]
+})
+
+function isItemSelected(itemId) {
+    return selectedItemIds.value.has(
+        normalizeItemId(itemId),
+    )
+}
+
+const selectedItems = computed(() => {
+    return cartStore.items.filter(
+        (item) => {
+            return isItemSelected(
+                item.id,
+            )
+        },
+    )
+})
+
+const selectedSellerIds = computed(() => {
+    const ids = selectedItems.value
+        .map((item) => {
+            return resolveSellerId(item)
+        })
+        .filter((sellerId) => {
+            return sellerId !== null
+        })
+
+    return [
+        ...new Set(ids),
+    ]
+})
+
+const selectedSellerId = computed(() => {
+    if (
+        selectedSellerIds.value
+            .length !== 1
+    ) {
+        return null
+    }
+
+    return selectedSellerIds.value[0]
+})
+
+function isSellerSelected(group) {
+    if (group.items.length === 0) {
+        return false
+    }
+
+    return group.items.every(
+        (item) => {
+            return isItemSelected(
+                item.id,
+            )
+        },
+    )
+}
+
+function isSellerPartiallySelected(
+    group,
+) {
+    const selectedCount =
+        group.items.filter((item) => {
+            return isItemSelected(
+                item.id,
+            )
+        }).length
+
+    return (
+        selectedCount > 0 &&
+        selectedCount <
+            group.items.length
+    )
+}
+
+/*
+ * Một lần checkout chỉ thuộc một seller.
+ * Khi chọn seller mới, lựa chọn của seller cũ bị bỏ.
+ */
+function toggleSeller(
+    group,
+    checked,
+) {
+    selectionError.value = ''
+
+    if (group.sellerId === null) {
+        selectionError.value =
+            'Không xác định được người bán của nhóm sản phẩm này.'
+
+        return
+    }
+
+    if (checked) {
+        selectedItemIds.value =
+            new Set(
+                group.items.map(
+                    (item) => {
+                        return normalizeItemId(
+                            item.id,
+                        )
+                    },
+                ),
+            )
+
+        return
+    }
+
+    const nextSelection = new Set(
+        selectedItemIds.value,
+    )
+
+    group.items.forEach((item) => {
+        nextSelection.delete(
+            normalizeItemId(
+                item.id,
+            ),
+        )
+    })
+
+    selectedItemIds.value =
+        nextSelection
+}
+
+function toggleItem(
+    item,
+    checked,
+) {
+    selectionError.value = ''
+
+    const itemId = normalizeItemId(
+        item.id,
+    )
+    console.log(item.seller_id)
+    const sellerId =
+        resolveSellerId(item)
+    console.log(sellerId)
+    if (sellerId === null) {
+        selectionError.value =
+            'Không xác định được người bán của sản phẩm.'
+
+        return
+    }
+
+    if (!checked) {
+        const nextSelection = new Set(
+            selectedItemIds.value,
+        )
+
+        nextSelection.delete(itemId)
+
+        selectedItemIds.value =
+            nextSelection
+
+        return
+    }
+
+    const hasAnotherSeller =
+        selectedSellerIds.value.some(
+            (selectedId) => {
+                return (
+                    selectedId !== sellerId
+                )
+            },
+        )
+
+    if (hasAnotherSeller) {
+        selectedItemIds.value =
+            new Set([itemId])
+
+        return
+    }
+
+    const nextSelection = new Set(
+        selectedItemIds.value,
+    )
+
+    nextSelection.add(itemId)
+
+    selectedItemIds.value =
+        nextSelection
+}
+
+const selectedLineCount = computed(() => {
+    return selectedItems.value.length
+})
+
+const selectedItemCount = computed(() => {
+    return selectedItems.value.reduce(
+        (total, item) => {
+            return (
+                total +
+                Number(item.quantity)
+            )
+        },
+        0,
+    )
+})
+
+const selectedSubtotal = computed(() => {
+    return selectedItems.value.reduce(
+        (total, item) => {
+            return (
+                total +
+                Number(item.price) *
+                    Number(item.quantity)
+            )
+        },
+        0,
+    )
+})
+
+/*
+ * Backend hiện đặt shipping_fee = 0.
+ */
 const shippingFee = computed(() => {
-    if (cartStore.isEmpty) {
-        return 0
-    }
-
-    if (cartStore.subtotal >= 500000) {
-        return 0
-    }
-
-    return 30000
+    return 0
 })
 
 const grandTotal = computed(() => {
     return (
-        cartStore.subtotal +
+        selectedSubtotal.value +
         shippingFee.value
     )
 })
 
+const canCheckout = computed(() => {
+    return (
+        selectedItems.value.length > 0 &&
+        selectedSellerIds.value.length === 1
+    )
+})
+
 function formatPrice(value) {
-    return new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-        maximumFractionDigits: 0,
-    }).format(value)
+    return new Intl.NumberFormat(
+        'vi-VN',
+        {
+            style: 'currency',
+            currency: 'VND',
+            maximumFractionDigits: 0,
+        },
+    ).format(
+        Number(value ?? 0),
+    )
+}
+
+function removeItem(itemId) {
+    const normalizedId =
+        normalizeItemId(itemId)
+
+    const nextSelection = new Set(
+        selectedItemIds.value,
+    )
+
+    nextSelection.delete(
+        normalizedId,
+    )
+
+    selectedItemIds.value =
+        nextSelection
+
+    cartStore.removeItem(itemId)
+}
+
+function clearCart() {
+    selectedItemIds.value =
+        new Set()
+
+    sessionStorage.removeItem(
+        CHECKOUT_CONTEXT_KEY,
+    )
+
+    cartStore.clearCart()
 }
 
 function goToCheckout() {
-    if (cartStore.isEmpty) {
+    selectionError.value = ''
+
+    if (selectedItems.value.length === 0) {
+        selectionError.value =
+            'Vui lòng chọn sản phẩm để thanh toán.'
+
         return
     }
 
-    router.push('/checkout')
+    if (
+        selectedSellerIds.value.length !== 1
+    ) {
+        selectionError.value =
+            'Mỗi lần checkout chỉ được chọn sản phẩm của một người bán.'
+
+        return
+    }
+
+    const sellerId =
+        selectedSellerId.value
+
+    if (
+        !Number.isInteger(sellerId) ||
+        sellerId <= 0
+    ) {
+        selectionError.value =
+            'Người bán được chọn không hợp lệ.'
+
+        return
+    }
+
+    const cartItemIds =
+        selectedItems.value.map(
+            (item) => Number(item.id),
+        )
+
+    const hasInvalidCartItemId =
+        cartItemIds.some(
+            (itemId) => {
+                return (
+                    !Number.isInteger(
+                        itemId,
+                    ) ||
+                    itemId <= 0
+                )
+            },
+        )
+
+    if (hasInvalidCartItemId) {
+        selectionError.value =
+            'Danh sách sản phẩm được chọn không hợp lệ.'
+
+        return
+    }
+
+    const checkoutContext = {
+        seller_id: sellerId,
+        cart_item_ids: [
+            ...new Set(cartItemIds),
+        ],
+        idempotency_key:
+            crypto.randomUUID(),
+    }
+
+    sessionStorage.setItem(
+        CHECKOUT_CONTEXT_KEY,
+        JSON.stringify(
+            checkoutContext,
+        ),
+    )
+
+    router.push({
+        name: 'checkout',
+    })
 }
 </script>
 
@@ -81,8 +521,8 @@ function goToCheckout() {
                 <h1>Giỏ hàng</h1>
 
                 <p>
-                    Kiểm tra sản phẩm và số lượng trước
-                    khi chuyển sang thanh toán.
+                    Chọn sản phẩm cần mua và kiểm tra
+                    số lượng trước khi thanh toán.
                 </p>
             </div>
 
@@ -98,177 +538,313 @@ function goToCheckout() {
         >
             <section class="cart-items">
                 <div class="cart-items__heading">
-                    <h2>
-                        Sản phẩm đã chọn
-                    </h2>
+                    <div>
+                        <h2>
+                            Sản phẩm trong giỏ hàng
+                        </h2>
+
+                        <span
+                            class="cart-items__selected-count"
+                        >
+                            Đã chọn
+                            {{ selectedLineCount }}
+                            mặt hàng,
+                            {{ selectedItemCount }}
+                            sản phẩm
+                        </span>
+                    </div>
 
                     <button
                         type="button"
                         class="cart-items__clear"
-                        @click="cartStore.clearCart"
+                        @click="clearCart"
                     >
                         Xóa tất cả
                     </button>
                 </div>
 
-                <article
-                    v-for="item in cartStore.items"
-                    :key="item.id"
-                    class="cart-item"
+                <div
+                    v-if="selectionError"
+                    class="selection-error"
+                    role="alert"
                 >
-                    <RouterLink
-                        :to="{
-                            name: 'product-detail',
-                            params: {
-                                slug: item.slug,
-                            },
-                        }"
-                        class="cart-item__image"
+                    <CircleAlert :size="17" />
+
+                    <span>
+                        {{ selectionError }}
+                    </span>
+                </div>
+
+                <section
+                    v-for="group in sellerGroups"
+                    :key="group.key"
+                    class="seller-group"
+                >
+                    <header
+                        class="seller-group__header"
                     >
-                        <img
-                            :src="item.image"
-                            :alt="item.name"
-                        />
-                    </RouterLink>
-
-                    <div class="cart-item__information">
-                        <div>
-                            <p
-                                v-if="item.seller"
-                                class="cart-item__seller"
-                            >
-                                {{ item.seller }}
-                            </p>
-
-                            <RouterLink
-                                :to="{
-                                    name:
-                                        'product-detail',
-                                    params: {
-                                        slug: item.slug,
-                                    },
-                                }"
-                                class="cart-item__name"
-                            >
-                                {{ item.name }}
-                            </RouterLink>
-                        </div>
-
-                        <div class="cart-item__prices">
-                            <span
-                                class="cart-item__price"
-                            >
-                                {{
-                                    formatPrice(
-                                        item.price,
-                                    )
-                                }}
-                            </span>
-
-                            <span
-                                v-if="
-                                    item.originalPrice
-                                "
-                                class="cart-item__original-price"
-                            >
-                                {{
-                                    formatPrice(
-                                        item.originalPrice,
-                                    )
-                                }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="cart-item__quantity">
-                        <span>Số lượng</span>
-
-                        <div class="quantity-control">
-                            <button
-                                type="button"
-                                aria-label="Giảm số lượng"
-                                :disabled="
-                                    item.quantity <= 1
-                                "
-                                @click="
-                                    cartStore.decreaseQuantity(
-                                        item.id,
-                                    )
-                                "
-                            >
-                                <Minus :size="15" />
-                            </button>
-
+                        <label
+                            class="selection-checkbox"
+                        >
                             <input
-                                :value="item.quantity"
-                                type="number"
-                                min="1"
-                                :max="
-                                    item.stock ?? undefined
+                                type="checkbox"
+                                :checked="
+                                    isSellerSelected(
+                                        group,
+                                    )
                                 "
-                                aria-label="Số lượng"
+                                :indeterminate="
+                                    isSellerPartiallySelected(
+                                        group,
+                                    )
+                                "
+                                :disabled="
+                                    group.sellerId ===
+                                    null
+                                "
                                 @change="
-                                    cartStore.updateQuantity(
-                                        item.id,
-                                        $event.target.value,
+                                    toggleSeller(
+                                        group,
+                                        $event.target
+                                            .checked,
                                     )
                                 "
                             />
 
-                            <button
-                                type="button"
-                                aria-label="Tăng số lượng"
-                                :disabled="
-                                    item.stock !== null &&
-                                    item.quantity >=
-                                        item.stock
-                                "
-                                @click="
-                                    cartStore.increaseQuantity(
+                            <span class="sr-only">
+                                Chọn tất cả sản phẩm của
+                                {{ group.sellerName }}
+                            </span>
+                        </label>
+
+                        <Store :size="17" />
+
+                        <strong>
+                            {{ group.sellerName }}
+                        </strong>
+
+                        <span
+                            class="seller-group__count"
+                        >
+                            {{
+                                group.items.filter(
+                                    (item) =>
+                                        isItemSelected(
+                                            item.id,
+                                        ),
+                                ).length
+                            }}/{{ group.items.length }}
+                            đã chọn
+                        </span>
+                    </header>
+
+                    <article
+                        v-for="item in group.items"
+                        :key="item.id"
+                        class="cart-item"
+                        :class="{
+                            'cart-item--selected':
+                                isItemSelected(
+                                    item.id,
+                                ),
+                        }"
+                    >
+                        <label
+                            class="cart-item__selector"
+                        >
+                            <input
+                                type="checkbox"
+                                :checked="
+                                    isItemSelected(
                                         item.id,
                                     )
                                 "
+                                @change="
+                                    toggleItem(
+                                        item,
+                                        $event.target
+                                            .checked,
+                                    )
+                                "
+                            />
+
+                            <span class="sr-only">
+                                Chọn {{ item.name }}
+                                để thanh toán
+                            </span>
+                        </label>
+
+                        <RouterLink
+                            :to="{
+                                name: 'product-detail',
+                                params: {
+                                    slug: item.slug,
+                                },
+                            }"
+                            class="cart-item__image"
+                        >
+                            <img
+                                :src="item.image"
+                                :alt="item.name"
+                            />
+                        </RouterLink>
+
+                        <div
+                            class="cart-item__information"
+                        >
+                            <div>
+                                <p
+                                    class="cart-item__seller"
+                                >
+                                    {{ group.sellerName }}
+                                </p>
+
+                                <RouterLink
+                                    :to="{
+                                        name:
+                                            'product-detail',
+                                        params: {
+                                            slug:
+                                                item.slug,
+                                        },
+                                    }"
+                                    class="cart-item__name"
+                                >
+                                    {{ item.name }}
+                                </RouterLink>
+                            </div>
+
+                            <div
+                                class="cart-item__prices"
                             >
-                                <Plus :size="15" />
-                            </button>
+                                <span
+                                    class="cart-item__price"
+                                >
+                                    {{
+                                        formatPrice(
+                                            item.price,
+                                        )
+                                    }}
+                                </span>
+
+                                <span
+                                    v-if="item.originalPrice"
+                                    class="cart-item__original-price"
+                                >
+                                    {{
+                                        formatPrice(
+                                            item.originalPrice,
+                                        )
+                                    }}
+                                </span>
+                            </div>
                         </div>
 
-                        <span
-                            v-if="item.stock !== null"
-                            class="cart-item__stock"
+                        <div
+                            class="cart-item__quantity"
                         >
-                            Còn {{ item.stock }} sản phẩm
-                        </span>
-                    </div>
+                            <span>Số lượng</span>
 
-                    <div class="cart-item__total">
-                        <span>Thành tiền</span>
+                            <div
+                                class="quantity-control"
+                            >
+                                <button
+                                    type="button"
+                                    aria-label="Giảm số lượng"
+                                    :disabled="
+                                        item.quantity <= 1
+                                    "
+                                    @click="
+                                        cartStore
+                                            .decreaseQuantity(
+                                                item.id,
+                                            )
+                                    "
+                                >
+                                    <Minus :size="15" />
+                                </button>
 
-                        <strong>
-                            {{
-                                formatPrice(
-                                    item.price *
-                                        item.quantity,
-                                )
-                            }}
-                        </strong>
-                    </div>
+                                <input
+                                    :value="item.quantity"
+                                    type="number"
+                                    min="1"
+                                    :max="
+                                        item.stock ??
+                                        undefined
+                                    "
+                                    aria-label="Số lượng"
+                                    @change="
+                                        cartStore
+                                            .updateQuantity(
+                                                item.id,
+                                                $event.target
+                                                    .value,
+                                            )
+                                    "
+                                />
 
-                    <button
-                        type="button"
-                        class="cart-item__remove"
-                        :aria-label="
-                            `Xóa ${item.name} khỏi giỏ hàng`
-                        "
-                        @click="
-                            cartStore.removeItem(
-                                item.id,
-                            )
-                        "
-                    >
-                        <Trash2 :size="18" />
-                    </button>
-                </article>
+                                <button
+                                    type="button"
+                                    aria-label="Tăng số lượng"
+                                    :disabled="
+                                        item.stock !==
+                                            null &&
+                                        item.quantity >=
+                                            item.stock
+                                    "
+                                    @click="
+                                        cartStore
+                                            .increaseQuantity(
+                                                item.id,
+                                            )
+                                    "
+                                >
+                                    <Plus :size="15" />
+                                </button>
+                            </div>
+
+                            <span
+                                v-if="item.stock !== null"
+                                class="cart-item__stock"
+                            >
+                                Còn {{ item.stock }}
+                                sản phẩm
+                            </span>
+                        </div>
+
+                        <div
+                            class="cart-item__total"
+                        >
+                            <span>Thành tiền</span>
+
+                            <strong>
+                                {{
+                                    formatPrice(
+                                        Number(
+                                            item.price,
+                                        ) *
+                                            Number(
+                                                item.quantity,
+                                            ),
+                                    )
+                                }}
+                            </strong>
+                        </div>
+
+                        <button
+                            type="button"
+                            class="cart-item__remove"
+                            :aria-label="
+                                `Xóa ${item.name} khỏi giỏ hàng`
+                            "
+                            @click="
+                                removeItem(item.id)
+                            "
+                        >
+                            <Trash2 :size="18" />
+                        </button>
+                    </article>
+                </section>
 
                 <RouterLink
                     to="/products"
@@ -281,58 +857,51 @@ function goToCheckout() {
             </section>
 
             <aside class="order-summary">
-                <div class="order-summary__header">
+                <div
+                    class="order-summary__header"
+                >
                     <ShoppingBag :size="20" />
 
                     <h2>Tóm tắt đơn hàng</h2>
                 </div>
 
-                <dl class="order-summary__details">
+                <dl
+                    class="order-summary__details"
+                >
                     <div>
-                        <dt>
-                            Tạm tính
-                        </dt>
+                        <dt>Mặt hàng đã chọn</dt>
+
+                        <dd>
+                            {{ selectedLineCount }}
+                        </dd>
+                    </div>
+
+                    <div>
+                        <dt>Tổng số lượng</dt>
+
+                        <dd>
+                            {{ selectedItemCount }}
+                        </dd>
+                    </div>
+
+                    <div>
+                        <dt>Tạm tính</dt>
 
                         <dd>
                             {{
                                 formatPrice(
-                                    cartStore.subtotal,
-                                )
-                            }}
-                        </dd>
-                    </div>
-
-                    <div
-                        v-if="
-                            cartStore.discountAmount >
-                            0
-                        "
-                    >
-                        <dt>
-                            Tiết kiệm
-                        </dt>
-
-                        <dd
-                            class="order-summary__discount"
-                        >
-                            −{{
-                                formatPrice(
-                                    cartStore.discountAmount,
+                                    selectedSubtotal,
                                 )
                             }}
                         </dd>
                     </div>
 
                     <div>
-                        <dt>
-                            Phí vận chuyển
-                        </dt>
+                        <dt>Phí vận chuyển</dt>
 
                         <dd>
                             <span
-                                v-if="
-                                    shippingFee === 0
-                                "
+                                v-if="shippingFee === 0"
                                 class="order-summary__free"
                             >
                                 Miễn phí
@@ -350,41 +919,8 @@ function goToCheckout() {
                 </dl>
 
                 <div
-                    v-if="
-                        shippingFee > 0
-                    "
-                    class="shipping-progress"
+                    class="order-summary__total"
                 >
-                    <p>
-                        Mua thêm
-                        <strong>
-                            {{
-                                formatPrice(
-                                    500000 -
-                                        cartStore.subtotal,
-                                )
-                            }}
-                        </strong>
-                        để được miễn phí vận chuyển.
-                    </p>
-
-                    <div
-                        class="shipping-progress__track"
-                    >
-                        <span
-                            :style="{
-                                width: `${Math.min(
-                                    100,
-                                    (cartStore.subtotal /
-                                        500000) *
-                                        100,
-                                )}%`,
-                            }"
-                        />
-                    </div>
-                </div>
-
-                <div class="order-summary__total">
                     <span>
                         Tổng thanh toán
                     </span>
@@ -397,12 +933,20 @@ function goToCheckout() {
                 <button
                     type="button"
                     class="checkout-button"
+                    :disabled="!canCheckout"
                     @click="goToCheckout"
                 >
                     Tiến hành thanh toán
                 </button>
 
-                <div class="order-summary__benefits">
+                <p class="order-summary__hint">
+                    Mỗi lần thanh toán chỉ chọn sản phẩm
+                    của một người bán.
+                </p>
+
+                <div
+                    class="order-summary__benefits"
+                >
                     <article>
                         <ShieldCheck :size="18" />
 
@@ -504,8 +1048,7 @@ function goToCheckout() {
 .cart-layout {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr)
-        360px;
+        minmax(0, 1fr) 360px;
     gap: 28px;
     align-items: start;
 }
@@ -521,13 +1064,24 @@ function goToCheckout() {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 20px;
     min-height: 64px;
-    padding-inline: 20px;
+    padding: 12px 20px;
     border-bottom: 1px solid var(--color-border);
+}
+
+.cart-items__heading > div {
+    display: grid;
+    gap: 5px;
 }
 
 .cart-items__heading h2 {
     font-size: 16px;
+}
+
+.cart-items__selected-count {
+    color: var(--color-text-muted);
+    font-size: 11px;
 }
 
 .cart-items__clear {
@@ -539,19 +1093,92 @@ function goToCheckout() {
     font-weight: 600;
 }
 
+.selection-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 20px 0;
+    padding: 11px 12px;
+    color: var(--color-danger);
+    background: #fff1f3;
+    border: 1px solid #ffd6dc;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+}
+
+.selection-error svg {
+    flex-shrink: 0;
+}
+
+.seller-group {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.seller-group__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 0 20px;
+    background: var(--color-primary-50);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.seller-group__header svg {
+    flex-shrink: 0;
+    color: var(--color-primary-700);
+}
+
+.seller-group__header strong {
+    color: var(--color-text-primary);
+    font-size: 13px;
+}
+
+.seller-group__count {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-size: 11px;
+}
+
+.selection-checkbox,
+.cart-item__selector {
+    display: grid;
+    place-items: center;
+}
+
+.selection-checkbox input,
+.cart-item__selector input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--color-primary-700);
+}
+
 .cart-item {
     position: relative;
     display: grid;
     grid-template-columns:
-        112px
-        minmax(0, 1fr)
-        auto
-        130px
-        38px;
+        24px 112px minmax(0, 1fr)
+        auto 130px 38px;
     gap: 20px;
     align-items: center;
     padding: 20px;
     border-bottom: 1px solid var(--color-border);
+    transition:
+        background-color var(--transition-base);
+}
+
+.cart-item:last-child {
+    border-bottom: 0;
+}
+
+.cart-item--selected {
+    background: var(--color-primary-50);
+}
+
+.cart-item__selector {
+    align-self: center;
 }
 
 .cart-item__image {
@@ -765,42 +1392,8 @@ function goToCheckout() {
     font-weight: 600;
 }
 
-.order-summary__discount {
-    color: var(--color-success) !important;
-}
-
 .order-summary__free {
     color: var(--color-success);
-}
-
-.shipping-progress {
-    margin: 0 20px 20px;
-    padding: 14px;
-    background: var(--color-primary-50);
-    border: 1px solid var(--color-primary-100);
-    border-radius: var(--radius-md);
-}
-
-.shipping-progress p {
-    color: var(--color-text-secondary);
-    font-size: 11px;
-    line-height: 1.55;
-}
-
-.shipping-progress__track {
-    overflow: hidden;
-    height: 5px;
-    margin-top: 10px;
-    background: var(--color-primary-100);
-    border-radius: var(--radius-pill);
-}
-
-.shipping-progress__track span {
-    display: block;
-    height: 100%;
-    background: var(--color-primary-700);
-    border-radius: inherit;
-    transition: width var(--transition-base);
 }
 
 .order-summary__total {
@@ -835,8 +1428,21 @@ function goToCheckout() {
     font-weight: 700;
 }
 
-.checkout-button:hover {
+.checkout-button:hover:not(:disabled) {
     background: var(--color-primary-800);
+}
+
+.checkout-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.order-summary__hint {
+    margin: 12px 20px 0;
+    color: var(--color-text-muted);
+    font-size: 10px;
+    line-height: 1.55;
+    text-align: center;
 }
 
 .order-summary__benefits {
@@ -908,6 +1514,18 @@ function goToCheckout() {
     background: var(--color-primary-800);
 }
 
+.sr-only {
+    position: absolute;
+    overflow: hidden;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    white-space: nowrap;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
 @media (max-width: 1100px) {
     .cart-layout {
         grid-template-columns: 1fr;
@@ -921,27 +1539,38 @@ function goToCheckout() {
 @media (max-width: 820px) {
     .cart-item {
         grid-template-columns:
-            96px
-            minmax(0, 1fr)
+            24px 96px minmax(0, 1fr)
             36px;
     }
 
-    .cart-item__quantity,
-    .cart-item__total {
-        grid-row: 2;
+    .cart-item__selector {
+        grid-column: 1;
+        grid-row: 1;
     }
 
-    .cart-item__quantity {
+    .cart-item__image {
         grid-column: 2;
+        grid-row: 1;
     }
 
-    .cart-item__total {
+    .cart-item__information {
         grid-column: 3;
+        grid-row: 1;
     }
 
     .cart-item__remove {
-        grid-column: 3;
+        grid-column: 4;
         grid-row: 1;
+    }
+
+    .cart-item__quantity {
+        grid-column: 2 / 4;
+        grid-row: 2;
+    }
+
+    .cart-item__total {
+        grid-column: 4;
+        grid-row: 2;
     }
 }
 
@@ -956,20 +1585,32 @@ function goToCheckout() {
         font-size: 31px;
     }
 
+    .cart-items__heading {
+        align-items: flex-start;
+    }
+
+    .seller-group__header {
+        padding-inline: 16px;
+    }
+
+    .seller-group__count {
+        display: none;
+    }
+
     .cart-item {
-        grid-template-columns: 86px 1fr 34px;
-        gap: 14px;
+        grid-template-columns:
+            24px 76px minmax(0, 1fr)
+            34px;
+        gap: 12px;
         padding: 16px;
     }
 
     .cart-item__quantity {
-        grid-column: 1 / 3;
-        grid-row: 2;
+        grid-column: 2 / 4;
     }
 
     .cart-item__total {
-        grid-column: 3;
-        grid-row: 2;
+        grid-column: 4;
     }
 
     .quantity-control {

@@ -7,7 +7,7 @@ import {
     SlidersHorizontal,
     X,
 } from '@lucide/vue'
-import { useCartStore } from '@/stores/cart'
+
 import {
     computed,
     onMounted,
@@ -22,300 +22,205 @@ import {
     useRouter,
 } from 'vue-router'
 
+import { getProducts } from '@/api/products'
+import { getCategories } from '@/api/categories'
+import { getBrands } from '@/api/brands'
 import BaseCheckbox from '@/components/base/BaseCheckbox.vue'
 import BasePagination from '@/components/base/BasePagination.vue'
 import ProductCard from '@/components/customer/ProductCard.vue'
+import { useCartStore } from '@/stores/cart'
 
 const route = useRoute()
 const router = useRouter()
 const cartStore = useCartStore()
+
+const PRODUCTS_PER_PAGE = 8
+const FILTER_DEBOUNCE_TIME = 350
+
 const isFilterDrawerOpen = ref(false)
+const isLoading = ref(false)
+const loadError = ref('')
+
+const products = ref([])
+const categories = ref([])
+const brands = ref([])
+
+const isLoadingFilters = ref(false)
+const filterLoadError = ref('')
+
+// tạo biến reactive chứa trang hiện tại
 const currentPage = ref(
-    Number(route.query.page) || 1,
+    parsePositiveInteger(
+        route.query.page, //lấy query parameter 'page' trên url
+        1, // giá trị query thường là chuỗi, hàm  này
+    ), //chuyển giá trị thành số nguyên dương, tham số 1 là mặc định
 )
 
+// nếu có param string thì dùng, không thì xếp mới nhất
 const sortBy = ref(
-    route.query.sort || 'newest',
+    typeof route.query.sort === 'string'
+        ? route.query.sort
+        : 'newest',
 )
 
 const filters = reactive({
-    categories: route.query.category
-        ? [route.query.category]
-        : [],
+    categories:
+        typeof route.query.category ===
+        'string'
+            ? [route.query.category]
+            : [],
 
-    brands: [],
+    brands:
+        typeof route.query.brand ===
+        'string'
+            ? [route.query.brand]
+            : [],
 
-    minPrice: '',
-    maxPrice: '',
+    minPrice:
+        typeof route.query.min_price ===
+        'string'
+            ? route.query.min_price
+            : '',
 
-    rating: null,
+    maxPrice:
+        typeof route.query.max_price ===
+        'string'
+            ? route.query.max_price
+            : '',
 
-    inStockOnly: false,
+    rating:
+        route.query.min_rating
+            ? Number(
+                route.query.min_rating,
+            )
+            : null,
+
+    inStockOnly:
+        route.query.in_stock === '1',
+
     promotionOnly:
         route.query.promotion === '1',
 })
 
-const categories = [
-    {
-        label: 'Điện tử',
-        value: 'electronics',
-        count: 126,
-    },
-    {
-        label: 'Thời trang',
-        value: 'fashion',
-        count: 94,
-    },
-    {
-        label: 'Nhà cửa',
-        value: 'home-living',
-        count: 78,
-    },
-    {
-        label: 'Phụ kiện',
-        value: 'accessories',
-        count: 63,
-    },
-    {
-        label: 'Thiết bị âm thanh',
-        value: 'audio',
-        count: 42,
-    },
-]
-
-const brands = [
-    {
-        label: 'Auralis',
-        value: 'auralis',
-        count: 28,
-    },
-    {
-        label: 'Nova',
-        value: 'nova',
-        count: 35,
-    },
-    {
-        label: 'Urban Form',
-        value: 'urban-form',
-        count: 19,
-    },
-    {
-        label: 'Nest Living',
-        value: 'nest-living',
-        count: 24,
-    },
-]
-
-const products = [
-    {
-        id: 1,
-        name: 'Tai nghe không dây chống ồn chủ động',
-        slug: 'tai-nghe-khong-day-chong-on',
-        category: 'Thiết bị âm thanh',
-        categorySlug: 'audio',
-        brand: 'auralis',
-        price: 1890000,
-        originalPrice: 2290000,
-        rating: 4.8,
-        reviews: 128,
-        badge: 'Bán chạy',
-        stock: 18,
-        image:
-            'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 2,
-        name: 'Đồng hồ tối giản dây kim loại',
-        slug: 'dong-ho-toi-gian-day-kim-loai',
-        category: 'Phụ kiện',
-        categorySlug: 'accessories',
-        brand: 'nova',
-        price: 1290000,
-        originalPrice: null,
-        rating: 4.7,
-        reviews: 86,
-        badge: 'Hàng mới',
-        stock: 12,
-        image:
-            'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 3,
-        name: 'Giày thể thao phong cách đô thị',
-        slug: 'giay-the-thao-phong-cach-do-thi',
-        category: 'Thời trang',
-        categorySlug: 'fashion',
-        brand: 'urban-form',
-        price: 1590000,
-        originalPrice: 1890000,
-        rating: 4.9,
-        reviews: 214,
-        badge: null,
-        stock: 21,
-        image:
-            'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 4,
-        name: 'Máy ảnh kỹ thuật số nhỏ gọn',
-        slug: 'may-anh-ky-thuat-so-nho-gon',
-        category: 'Điện tử',
-        categorySlug: 'electronics',
-        brand: 'nova',
-        price: 8790000,
-        originalPrice: 9290000,
-        rating: 4.6,
-        reviews: 47,
-        badge: 'Ưu đãi',
-        stock: 7,
-        image:
-            'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 5,
-        name: 'Loa bluetooth để bàn thiết kế tối giản',
-        slug: 'loa-bluetooth-de-ban-toi-gian',
-        category: 'Thiết bị âm thanh',
-        categorySlug: 'audio',
-        brand: 'auralis',
-        price: 2190000,
-        originalPrice: null,
-        rating: 4.5,
-        reviews: 73,
-        badge: null,
-        stock: 14,
-        image:
-            'https://images.unsplash.com/photo-1545454675-3531b543be5d?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 6,
-        name: 'Ghế thư giãn bọc vải hiện đại',
-        slug: 'ghe-thu-gian-boc-vai-hien-dai',
-        category: 'Nhà cửa',
-        categorySlug: 'home-living',
-        brand: 'nest-living',
-        price: 3490000,
-        originalPrice: 3990000,
-        rating: 4.8,
-        reviews: 56,
-        badge: 'Ưu đãi',
-        stock: 5,
-        image:
-            'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 7,
-        name: 'Ba lô công sở chống thấm nước',
-        slug: 'ba-lo-cong-so-chong-tham',
-        category: 'Phụ kiện',
-        categorySlug: 'accessories',
-        brand: 'urban-form',
-        price: 890000,
-        originalPrice: null,
-        rating: 4.4,
-        reviews: 38,
-        badge: null,
-        stock: 0,
-        image:
-            'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 8,
-        name: 'Đèn bàn kim loại ánh sáng dịu',
-        slug: 'den-ban-kim-loai-anh-sang-diu',
-        category: 'Nhà cửa',
-        categorySlug: 'home-living',
-        brand: 'nest-living',
-        price: 750000,
-        originalPrice: 890000,
-        rating: 4.7,
-        reviews: 65,
-        badge: 'Hàng mới',
-        stock: 24,
-        image:
-            'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=800&q=80',
-    },
-]
-
-const filteredProducts = computed(() => {
-    let result = [...products]
-
-    if (filters.categories.length > 0) {
-        result = result.filter((product) => {
-            return filters.categories.includes(
-                product.categorySlug,
-            )
-        })
-    }
-
-    if (filters.brands.length > 0) {
-        result = result.filter((product) => {
-            return filters.brands.includes(
-                product.brand,
-            )
-        })
-    }
-
-    const minPrice = Number(
-        filters.minPrice,
-    )
-
-    const maxPrice = Number(
-        filters.maxPrice,
-    )
-
-    if (filters.minPrice !== '') {
-        result = result.filter((product) => {
-            return product.price >= minPrice
-        })
-    }
-
-    if (filters.maxPrice !== '') {
-        result = result.filter((product) => {
-            return product.price <= maxPrice
-        })
-    }
-
-    if (filters.rating) {
-        result = result.filter((product) => {
-            return product.rating >= filters.rating
-        })
-    }
-
-    if (filters.inStockOnly) {
-        result = result.filter((product) => {
-            return product.stock > 0
-        })
-    }
-
-    if (filters.promotionOnly) {
-        result = result.filter((product) => {
-            return Boolean(
-                product.originalPrice,
-            )
-        })
-    }
-
-    if (sortBy.value === 'price-asc') {
-        result.sort(
-            (a, b) => a.price - b.price,
-        )
-    }
-
-    if (sortBy.value === 'price-desc') {
-        result.sort(
-            (a, b) => b.price - a.price,
-        )
-    }
-
-    if (sortBy.value === 'rating') {
-        result.sort(
-            (a, b) => b.rating - a.rating,
-        )
-    }
-
-    return result
+const pagination = reactive({
+    currentPage: 1,
+    lastPage: 1,
+    perPage: PRODUCTS_PER_PAGE,
+    total: 0,
 })
+
+function extractCollection(response) {
+    const body = response?.data
+
+    if (Array.isArray(body?.data)) {
+        return body.data
+    }
+
+    if (
+        Array.isArray(
+            body?.data?.data,
+        )
+    ) {
+        return body.data.data
+    }
+
+    if (Array.isArray(body)) {
+        return body
+    }
+
+    return []
+}
+
+function normalizeCategory(category) {
+    return {
+        id: category.id,
+
+        label:
+            category.name,
+
+        value:
+            category.slug,
+
+        count:
+            Number(
+                category.products_count ??
+                category.product_count ??
+                0,
+            ),
+    }
+}
+
+function normalizeBrand(brand) {
+    return {
+        id: brand.id,
+
+        label:
+            brand.name,
+
+        value:
+            brand.slug,
+
+        count:
+            Number(
+                brand.products_count ??
+                brand.product_count ??
+                0,
+            ),
+    }
+}
+
+
+async function fetchFilterOptions() {
+    isLoadingFilters.value = true
+    filterLoadError.value = ''
+
+    try {
+        const [
+            categoryResponse,
+            brandResponse,
+        ] = await Promise.all([
+            getCategories(),
+            getBrands(),
+        ])
+
+
+        const categoryItems =
+            extractCollection(
+                categoryResponse,
+            )
+
+        const brandItems =
+            extractCollection(
+                brandResponse,
+            )
+
+        categories.value =
+            categoryItems.map(
+                normalizeCategory,
+            )
+
+        brands.value =
+            brandItems.map(
+                normalizeBrand,
+            )
+    } catch (error) {
+        categories.value = []
+        brands.value = []
+
+        filterLoadError.value =
+            error.response?.data
+                ?.message ??
+            'Không thể tải danh mục và thương hiệu.'
+
+        console.error(
+            'Fetch filter options error:',
+            error,
+        )
+    } finally {
+        isLoadingFilters.value = false
+    }
+}
+
 
 const activeFilterCount = computed(() => {
     let count = 0
@@ -331,7 +236,7 @@ const activeFilterCount = computed(() => {
         count++
     }
 
-    if (filters.rating) {
+    if (filters.rating !== null) {
         count++
     }
 
@@ -346,16 +251,412 @@ const activeFilterCount = computed(() => {
     return count
 })
 
-const lastPage = computed(() => {
-    return Math.max(
-        1,
-        Math.ceil(
-            filteredProducts.value.length / 8,
-        ),
-    )
+const totalProducts = computed(() => {
+    return pagination.total
 })
 
+const lastPage = computed(() => {
+    return pagination.lastPage
+})
+
+function parsePositiveInteger(
+    value,
+    fallback,
+) {
+    const parsedValue = Number(value)
+
+    if (
+        !Number.isInteger(parsedValue) ||
+        parsedValue <= 0
+    ) {
+        return fallback
+    }
+
+    return parsedValue
+}
+
+function toNumber(
+    value,
+    fallback = 0,
+) {
+    const parsedValue = Number(value)
+
+    return Number.isFinite(parsedValue)
+        ? parsedValue
+        : fallback
+}
+
+function resolveImageUrl(product) {
+    return (
+        product.main_image?.url ??
+        product.main_image?.path ??
+        product.image_url ??
+        product.image ??
+        '/images/product-placeholder.png'
+    )
+}
+
+function normalizeProduct(product) {
+    const regularPrice = toNumber(
+        product.price,
+    )
+
+    const salePrice =
+        product.sale_price !== null &&
+        product.sale_price !== undefined
+            ? toNumber(
+                product.sale_price,
+            )
+            : null
+
+    const effectivePrice = toNumber(
+        product.effective_price ??
+            salePrice ??
+            regularPrice,
+    )
+
+    const sellerId =
+        product.seller?.id ??
+        product.seller_id ??
+        null
+
+    return {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        sku: product.sku,
+
+        price: effectivePrice,
+
+        originalPrice:
+            salePrice !== null
+                ? regularPrice
+                : null,
+
+        stock: toNumber(
+            product.stock,
+        ),
+
+        image:
+            resolveImageUrl(product),
+
+        category:
+            product.category?.name ??
+            'Chưa phân loại',
+
+        categorySlug:
+            product.category?.slug ??
+            null,
+
+        brand:
+            product.brand?.slug ??
+            null,
+
+        brandName:
+            product.brand?.name ??
+            null,
+
+        rating: toNumber(
+            product.average_rating ??
+                product.rating,
+        ),
+
+        // reviews: toNumber(
+        //     product.reviews_count ??
+        //         product.reviews,
+        // ),
+
+        badge:
+            salePrice !== null
+                ? 'Ưu đãi'
+                : null,
+
+        seller_id: sellerId,
+
+        seller: {
+            id: sellerId,
+
+            name:
+                product.seller?.name ??
+                'Người bán',
+        },
+
+        description:
+            product.description ??
+            '',
+
+        inStock:
+            product.in_stock !==
+                undefined
+                ? Boolean(
+                    product.in_stock,
+                )
+                : toNumber(
+                    product.stock,
+                ) > 0,
+    }
+}
+
+function resolveBackendSort(sort) {
+    const sortMap = {
+        newest: 'newest',
+        rating: 'rating_desc',
+        'price-asc': 'price_asc',
+        'price-desc': 'price_desc',
+    }
+
+    return (
+        sortMap[sort] ??
+        'newest'
+    )
+}
+
+function removeEmptyParams(params) {
+    return Object.fromEntries(
+        Object.entries(params).filter(
+            ([, value]) => {
+                return (
+                    value !== undefined &&
+                    value !== null &&
+                    value !== ''
+                )
+            },
+        ),
+    )
+}
+
+function buildProductParams() {
+    return removeEmptyParams({
+        page: currentPage.value,
+        per_page: PRODUCTS_PER_PAGE,
+
+        keyword:
+            typeof route.query.keyword ===
+            'string'
+                ? route.query.keyword
+                : typeof route.query.search ===
+                    'string'
+                    ? route.query.search
+                    : undefined,
+
+
+        category:
+            filters.categories[0],
+
+        brand:
+            filters.brands[0],
+
+        min_price:
+            filters.minPrice,
+
+        max_price:
+            filters.maxPrice,
+
+        min_rating:
+            filters.rating,
+
+        in_stock:
+            filters.inStockOnly
+                ? 1
+                : undefined,
+
+        promotion:
+            filters.promotionOnly
+                ? 1
+                : undefined,
+
+        sort:
+            resolveBackendSort(
+                sortBy.value,
+            ),
+    })
+}
+
+function extractPaginatedPayload(response) {
+    const body =
+        response?.data ?? {}
+
+    if (Array.isArray(body.data)) {
+        return {
+            items: body.data,
+            meta: body.meta ?? {},
+        }
+    }
+
+    if (
+        Array.isArray(
+            body.data?.data,
+        )
+    ) {
+        return {
+            items:
+                body.data.data,
+
+            meta:
+                body.data.meta ??
+                body.meta ??
+                {},
+        }
+    }
+
+    if (Array.isArray(body)) {
+        return {
+            items: body,
+            meta: {},
+        }
+    }
+
+    return {
+        items: [],
+        meta: {},
+    }
+}
+
+function updatePagination(meta) {
+    pagination.currentPage =
+        parsePositiveInteger(
+            meta.current_page,
+            currentPage.value,
+        )
+
+    pagination.lastPage =
+        parsePositiveInteger(
+            meta.last_page,
+            1,
+        )
+
+    pagination.perPage =
+        parsePositiveInteger(
+            meta.per_page,
+            PRODUCTS_PER_PAGE,
+        )
+
+    pagination.total =
+        Number.isFinite(
+            Number(meta.total),
+        )
+            ? Number(meta.total)
+            : products.value.length
+
+    currentPage.value =
+        pagination.currentPage
+}
+
+async function fetchProducts() {
+    isLoading.value = true
+    loadError.value = ''
+
+    try {
+        const response =
+            await getProducts(
+                buildProductParams(),
+            )
+
+        const {
+            items,
+            meta,
+        } =
+            extractPaginatedPayload(
+                response,
+            )
+
+        products.value =
+            items.map(
+                normalizeProduct,
+            )
+
+        updatePagination(meta)
+    } catch (error) {
+        products.value = []
+
+        pagination.currentPage = 1
+        pagination.lastPage = 1
+        pagination.total = 0
+
+        loadError.value =
+            error.response?.data
+                ?.message ??
+            'Không thể tải danh sách sản phẩm.'
+    } finally {
+        isLoading.value = false
+    }
+}
+
+async function replaceRouteQuery() {
+    const query =
+        removeEmptyParams({
+            ...route.query,
+
+            page:
+                currentPage.value > 1
+                    ? currentPage.value
+                    : undefined,
+
+            sort:
+                sortBy.value !==
+                'newest'
+                    ? sortBy.value
+                    : undefined,
+
+            category:
+                filters.categories[0],
+
+            brand:
+                filters.brands[0],
+
+            min_price:
+                filters.minPrice,
+
+            max_price:
+                filters.maxPrice,
+
+            min_rating:
+                filters.rating,
+
+            in_stock:
+                filters.inStockOnly
+                    ? '1'
+                    : undefined,
+
+            promotion:
+                filters.promotionOnly
+                    ? '1'
+                    : undefined,
+        })
+
+    await router.replace({
+        query,
+    })
+}
+
+async function applyFilters() {
+    currentPage.value = 1
+
+    await replaceRouteQuery()
+    await fetchProducts()
+}
+
+let filterTimer = null
+
+function scheduleApplyFilters() {
+    window.clearTimeout(
+        filterTimer, //hủy bộ hẹn giờ cũ nếu nó vẫn đang chờ
+    )
+
+    filterTimer =
+        window.setTimeout(
+            () => {
+                applyFilters()//hàm cần chạy
+            },
+            FILTER_DEBOUNCE_TIME,// thời gian cần chờ
+        )
+}
+
 function resetFilters() {
+    window.clearTimeout(
+        filterTimer,
+    )
+
     filters.categories = []
     filters.brands = []
     filters.minPrice = ''
@@ -364,28 +665,43 @@ function resetFilters() {
     filters.inStockOnly = false
     filters.promotionOnly = false
 
+    sortBy.value = 'newest'
     currentPage.value = 1
+
+    scheduleApplyFilters()
 }
 
 function openFilterDrawer() {
     isFilterDrawerOpen.value = true
-    document.body.style.overflow = 'hidden'
+
+    document.body.style.overflow =
+        'hidden'
 }
 
 function closeFilterDrawer() {
     isFilterDrawerOpen.value = false
+
     document.body.style.overflow = ''
 }
 
-function changePage(page) {
-    currentPage.value = page
-
-    router.replace({
-        query: {
-            ...route.query,
+async function changePage(page) {
+    const nextPage =
+        parsePositiveInteger(
             page,
-        },
-    })
+            1,
+        )
+
+    if (
+        nextPage ===
+        currentPage.value
+    ) {
+        return
+    }
+
+    currentPage.value = nextPage
+
+    await replaceRouteQuery()
+    await fetchProducts()
 
     window.scrollTo({
         top: 0,
@@ -402,34 +718,100 @@ function handleEscape(event) {
     }
 }
 
-function handleAddToCart(product) {
-    if (product.stock <= 0) {
-        return
+async function handleAddToCart(product) {
+    try {
+        await cartStore.addItem(
+            product.id,
+            1,
+        )
+        console.log(product.id)
+    } catch (error) {
+        console.error(
+            'Không thể thêm sản phẩm:',
+            error,
+        )
     }
-
-    cartStore.addItem(product, 1)
 }
 
 function handleToggleWishlist(product) {
-    console.log('Toggle wishlist:', product)
+    console.log(
+        'Toggle wishlist:',
+        product,
+    )
 }
 
-watch(sortBy, (value) => {
-    router.replace({
-        query: {
-            ...route.query,
-            sort: value,
-            page: undefined,
-        },
-    })
-
-    currentPage.value = 1
-})
+watch(
+    sortBy,
+    () => {
+        scheduleApplyFilters()
+    },
+)
 
 watch(
     () => [
-        filters.categories,
-        filters.brands,
+        ...filters.categories,
+    ],
+    (
+        values,
+        previousValues = [],
+    ) => {
+        /*
+         * Backend nhận một category.
+         * Chọn category mới sẽ bỏ category cũ.
+         */
+        if (values.length > 1) {
+            const addedValue =
+                values.find((value) => {
+                    return !previousValues.includes(
+                        value,
+                    )
+                }) ??
+                values.at(-1)
+
+            filters.categories = [
+                addedValue,
+            ]
+
+            return
+        }
+
+        scheduleApplyFilters()
+    },
+)
+
+watch(
+    () => [
+        ...filters.brands,
+    ],
+    (
+        values,
+        previousValues = [],
+    ) => {
+        /*
+         * Backend nhận một brand.
+         */
+        if (values.length > 1) {
+            const addedValue =
+                values.find((value) => {
+                    return !previousValues.includes(
+                        value,
+                    )
+                }) ??
+                values.at(-1)
+
+            filters.brands = [
+                addedValue,
+            ]
+
+            return
+        }
+
+        scheduleApplyFilters()
+    },
+)
+
+watch(
+    () => [
         filters.minPrice,
         filters.maxPrice,
         filters.rating,
@@ -437,21 +819,24 @@ watch(
         filters.promotionOnly,
     ],
     () => {
-        currentPage.value = 1
-    },
-    {
-        deep: true,
+        scheduleApplyFilters()
     },
 )
 
-onMounted(() => {
+onMounted(async () => {
     window.addEventListener(
         'keydown',
         handleEscape,
     )
+    await fetchFilterOptions()
+    await fetchProducts()
 })
 
 onUnmounted(() => {
+    window.clearTimeout(
+        filterTimer,
+    )
+
     window.removeEventListener(
         'keydown',
         handleEscape,
@@ -494,7 +879,7 @@ onUnmounted(() => {
 
             <div class="product-list-header__summary">
                 <span>
-                    {{ filteredProducts.length }}
+                    {{ totalProducts }}
                     sản phẩm
                 </span>
             </div>
@@ -692,13 +1077,52 @@ onUnmounted(() => {
 
             <section class="product-results">
                 <div
-                    v-if="
-                        filteredProducts.length > 0
-                    "
+                    v-if="isLoading"
+                    class="product-loading"
+                    aria-live="polite"
+                >
+                    <span
+                        class="product-loading__spinner"
+                    />
+
+                    <p>
+                        Đang tải sản phẩm...
+                    </p>
+                </div>
+
+                <div
+                    v-else-if="loadError"
+                    class="empty-results"
+                >
+                    <div class="empty-results__icon">
+                        <Filter :size="26" />
+                    </div>
+
+                    <h2>
+                        Không thể tải sản phẩm
+                    </h2>
+
+                    <p>
+                        {{ loadError }}
+                    </p>
+
+                    <button
+                        type="button"
+                        class="empty-results__button"
+                        @click="fetchProducts"
+                    >
+                        <RotateCcw :size="17" />
+
+                        Thử lại
+                    </button>
+                </div>
+
+                <div
+                    v-else-if="products.length > 0"
                     class="product-grid"
                 >
                     <ProductCard
-                        v-for="product in filteredProducts"
+                        v-for="product in products"
                         :key="product.id"
                         :product="product"
                         @add-to-cart="
@@ -739,7 +1163,14 @@ onUnmounted(() => {
                 </div>
 
                 <BasePagination
-                    :current-page="currentPage"
+                    v-if="
+                        !isLoading &&
+                        !loadError &&
+                        lastPage > 1
+                    "
+                    :current-page="
+                        pagination.currentPage
+                    "
                     :last-page="lastPage"
                     @change="changePage"
                 />
@@ -923,7 +1354,7 @@ onUnmounted(() => {
                         @click="closeFilterDrawer"
                     >
                         Xem
-                        {{ filteredProducts.length }}
+                        {{ totalProducts }}
                         sản phẩm
                     </button>
                 </footer>
@@ -1217,6 +1648,38 @@ onUnmounted(() => {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
+}
+
+
+.product-loading {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 12px;
+    min-height: 420px;
+    padding: 40px;
+    color: var(--color-text-muted);
+    text-align: center;
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+}
+
+.product-loading__spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--color-primary-100);
+    border-top-color: var(--color-primary-700);
+    border-radius: 50%;
+    animation:
+        product-loading-spin 700ms linear infinite;
+}
+
+@keyframes product-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .empty-results {

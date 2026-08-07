@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Support\Money;
 
 class CheckoutService
 {
@@ -28,6 +29,23 @@ class CheckoutService
         User $user,
         array $data
     ): Order {
+        $existingOrder = Order::query()
+            ->where('user_id', $user->id)
+            ->where(
+                'idempotency_key',
+                $data['idempotency_key']
+            )
+            ->first();
+
+        if ($existingOrder !== null) {
+            return $existingOrder->load([
+                'items',
+                'voucher',
+                'customer:id,name,email',
+                'seller:id,name,email',
+            ]);
+        }
+
         return DB::transaction(function () use ($user, $data) {
             /*
              * Khóa giỏ hàng để tránh hai request checkout
@@ -38,6 +56,22 @@ class CheckoutService
                 ->lockForUpdate()
                 ->first();
 
+            $existingOrder = Order::query()
+                ->where('user_id', $user->id)
+                ->where(
+                    'idempotency_key',
+                    $data['idempotency_key']
+                )
+                ->first();
+
+            if ($existingOrder !== null) {
+                return $existingOrder->load([
+                    'items',
+                    'voucher',
+                    'customer:id,name,email',
+                    'seller:id,name,email',
+                ]);
+            }
             if ($cart === null) {
                 throw new EmptyCartException(
                     'Giỏ hàng đang trống.'
@@ -50,18 +84,41 @@ class CheckoutService
              *
              * Một lần checkout tạo một Order cho một Seller.
              */
+            $requestedCartItemIds = collect(
+                $data['cart_item_ids']
+            )
+                ->map(
+                    fn($cartItemId) =>
+                    (int) $cartItemId
+                )
+                ->unique()
+                ->sort()
+                ->values();
+
             $cartItems = $cart->items()
+                ->whereIn(
+                    'id',
+                    $requestedCartItemIds
+                )
                 ->whereHas(
                     'product',
                     function ($query) use ($data) {
                         $query->where(
                             'seller_id',
-                            $data['seller_id']
+                            (int) $data['seller_id']
                         );
                     }
                 )
                 ->get();
 
+            if (
+                $cartItems->count() !==
+                $requestedCartItemIds->count()
+            ) {
+                throw new ProductUnavailableException(
+                    'Một hoặc nhiều sản phẩm được chọn không hợp lệ.'
+                );
+            }
             if ($cartItems->isEmpty()) {
                 throw new EmptyCartException(
                     'Giỏ hàng không có sản phẩm của người bán này.'
@@ -172,19 +229,29 @@ class CheckoutService
              *
              * Không nhận price hoặc subtotal từ frontend.
              */
-            $subtotal = $cartItems->sum(
-                function ($cartItem) use ($lockedProducts) {
+            $subtotal = $cartItems->reduce(
+                function (
+                    string $subtotal,
+                    $cartItem
+                ) use ($lockedProducts): string {
                     $product = $lockedProducts->get(
                         $cartItem->product_id
                     );
 
-                    return (float) $product->effective_price
-                        * $cartItem->quantity;
-                }
-            );
+                    $lineTotal = Money::multiply(
+                        (string) $product->effective_price,
+                        (int) $cartItem->quantity
+                    );
 
+                    return Money::add(
+                        $subtotal,
+                        $lineTotal
+                    );
+                },
+                Money::zero()
+            );
             $voucher = null;
-            $discountAmount = 0;
+            $discountAmount = Money::zero();
 
             /*
              * Kiểm tra và khóa Voucher nếu Customer sử dụng.
@@ -220,15 +287,18 @@ class CheckoutService
                     );
             }
 
-            $shippingFee = 0;
+            $shippingFee = Money::zero();
 
-            $merchandiseAmount = max(
-                0,
-                $subtotal - $discountAmount
+            $merchandiseAmount =
+                Money::subtractFloorZero(
+                    $subtotal,
+                    $discountAmount
+                );
+
+            $total = Money::add(
+                $merchandiseAmount,
+                $shippingFee
             );
-
-            $total = $merchandiseAmount
-                + $shippingFee;
 
             /*
              * Một Order thuộc đúng một Seller.
@@ -238,6 +308,7 @@ class CheckoutService
                 'seller_id' => $resolvedSellerId,
                 'voucher_id' => $voucher?->id,
                 'order_code' => $this->generateOrderCode(),
+                'idempotency_key' => $data['idempotency_key'],
                 'subtotal' => $subtotal,
                 'discount_amount' => $discountAmount,
                 'shipping_fee' => $shippingFee,
@@ -257,10 +328,12 @@ class CheckoutService
                     $cartItem->product_id
                 );
 
-                $unitPrice = (float) $product->effective_price;
+                $unitPrice = (string) $product->effective_price;
 
-                $lineTotal = $unitPrice
-                    * $cartItem->quantity;
+                $lineTotal = Money::multiply(
+                    $unitPrice,
+                    (int) $cartItem->quantity
+                );
 
                 $order->items()->create([
                     'product_id' => $product->id,

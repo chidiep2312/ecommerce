@@ -15,43 +15,50 @@ class ProductFilterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'search' => [
+            'keyword' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
 
-            'seller_id' => [
+            'category' => [
                 'nullable',
-                'integer',
-                'exists:users,id',
+                'string',
+                'max:255',
+                'exists:categories,slug',
             ],
 
-            'brand_id' => [
+            'brand' => [
                 'nullable',
-                'integer',
-                'exists:brands,id',
+                'string',
+                'max:255',
+                'exists:brands,slug',
             ],
 
-            'category_id' => [
+            'min_price' => [
                 'nullable',
-                'integer',
-                'exists:categories,id',
+                'numeric',
+                'min:0',
             ],
 
-            'status' => [
+            'max_price' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'gte:min_price',
+            ],
+
+            'sort' => [
                 'nullable',
                 Rule::in([
-                    'active',
-                    'inactive',
-                    'drafted',
+                    'newest',
+                    'oldest',
+                    'price_asc',
+                    'price_desc',
+                    'name_asc',
+                    'name_desc',
                 ]),
             ],
-            'is_suspended' => [
-                'nullable',
-               'boolean'
-            ],
-
 
             'per_page' => [
                 'nullable',

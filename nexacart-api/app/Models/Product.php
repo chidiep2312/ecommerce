@@ -117,4 +117,8 @@ class Product extends Model
             'suspended_by'
         );
     }
+      public function reviews()
+    {
+        return $this->hasMany(Review::class);
+    }
 }

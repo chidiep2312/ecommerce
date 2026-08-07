@@ -3,6 +3,23 @@ import { RouterView } from 'vue-router'
 
 import CustomerFooter from '@/components/customer/CustomerFooter.vue'
 import CustomerHeader from '@/components/customer/CustomerHeader.vue'
+import {
+    useCartStore,
+} from '@/stores/cart'
+import {
+    onMounted
+} from 'vue'
+const cartStore = useCartStore()
+onMounted(async () => {
+    try {
+        await cartStore.fetchCart()
+    } catch (error) {
+        console.error(
+            'Không thể đồng bộ giỏ hàng:',
+            error,
+        )
+    }
+})
 </script>
 
 <template>
