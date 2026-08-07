@@ -19,18 +19,17 @@ import {
     ref,
 } from 'vue'
 
-import {
-    useRoute,
-    useRouter,
-} from 'vue-router'
+import { useRouter } from 'vue-router'
 
 import AddressCard from '@/components/customer/AddressCard.vue'
 
 import { createOrder } from '@/api/orders'
 import { useCartStore } from '@/stores/cart'
 
+const CHECKOUT_CONTEXT_KEY =
+    'nexacart_checkout_context'
+
 const router = useRouter()
-const route = useRoute()
 const cartStore = useCartStore()
 
 const isSubmitting = ref(false)
@@ -46,8 +45,7 @@ const addresses = ref([
         province: 'Thành phố Hồ Chí Minh',
         district: 'Quận 1',
         ward: 'Phường Bến Nghé',
-        addressLine:
-            '123 đường Nguyễn Huệ',
+        addressLine: '123 đường Nguyễn Huệ',
         fullAddress:
             '123 đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, Thành phố Hồ Chí Minh',
         isDefault: true,
@@ -59,8 +57,7 @@ const addresses = ref([
         province: 'Đồng Nai',
         district: 'Thành phố Biên Hòa',
         ward: 'Phường Tân Mai',
-        addressLine:
-            '45 đường Đồng Khởi',
+        addressLine: '45 đường Đồng Khởi',
         fullAddress:
             '45 đường Đồng Khởi, Phường Tân Mai, Thành phố Biên Hòa, Đồng Nai',
         isDefault: false,
@@ -74,48 +71,257 @@ const selectedAddressId = ref(
 )
 
 const selectedAddress = computed(() => {
-    return addresses.value.find((address) => {
-        return (
-            address.id ===
-            selectedAddressId.value
-        )
-    })
+    return addresses.value.find(
+        (address) => {
+            return (
+                address.id ===
+                selectedAddressId.value
+            )
+        },
+    )
 })
 
+function resolveSellerId(item) {
+    const sellerId = Number(
+        item.seller_id ??
+        item.seller?.id,
+    )
+
+    if (
+        !Number.isInteger(sellerId) ||
+        sellerId <= 0
+    ) {
+        return null
+    }
+
+    return sellerId
+}
+
+function readCheckoutContext() {
+    try {
+        const storedValue =
+            sessionStorage.getItem(
+                CHECKOUT_CONTEXT_KEY,
+            )
+
+        if (!storedValue) {
+            return null
+        }
+
+        const parsedValue =
+            JSON.parse(storedValue)
+
+        const sellerId = Number(
+            parsedValue.seller_id,
+        )
+
+        const cartItemIds = Array.isArray(
+            parsedValue.cart_item_ids,
+        )
+            ? parsedValue.cart_item_ids.map(
+                (itemId) => Number(itemId),
+            )
+            : []
+
+        const uniqueCartItemIds = [
+            ...new Set(cartItemIds),
+        ]
+
+        const isSellerValid =
+            Number.isInteger(sellerId) &&
+            sellerId > 0
+
+        const areCartItemsValid =
+            uniqueCartItemIds.length > 0 &&
+            uniqueCartItemIds.every(
+                (itemId) => {
+                    return (
+                        Number.isInteger(
+                            itemId,
+                        ) &&
+                        itemId > 0
+                    )
+                },
+            )
+
+        const isIdempotencyKeyValid =
+            typeof parsedValue
+                .idempotency_key ===
+                'string' &&
+            parsedValue.idempotency_key
+                .trim() !== ''
+
+        if (
+            !isSellerValid ||
+            !areCartItemsValid ||
+            !isIdempotencyKeyValid
+        ) {
+            sessionStorage.removeItem(
+                CHECKOUT_CONTEXT_KEY,
+            )
+
+            return null
+        }
+
+        return {
+            seller_id: sellerId,
+            cart_item_ids:
+                uniqueCartItemIds,
+            idempotency_key:
+                parsedValue.idempotency_key,
+        }
+    } catch (error) {
+        console.error(
+            'Không thể đọc thông tin checkout:',
+            error,
+        )
+
+        sessionStorage.removeItem(
+            CHECKOUT_CONTEXT_KEY,
+        )
+
+        return null
+    }
+}
+
+const checkoutContext = ref(
+    readCheckoutContext(),
+)
+
+const selectedCartItemIdSet =
+    computed(() => {
+        return new Set(
+            checkoutContext.value
+                ?.cart_item_ids ?? [],
+        )
+    })
+
+const selectedSellerId = computed(() => {
+    return (
+        checkoutContext.value
+            ?.seller_id ?? null
+    )
+})
+
+const checkoutItems = computed(() => {
+    if (!checkoutContext.value) {
+        return []
+    }
+
+    return cartStore.items.filter(
+        (item) => {
+            const itemId = Number(
+                item.id,
+            )
+
+            return (
+                selectedCartItemIdSet.value
+                    .has(itemId) &&
+                resolveSellerId(item) ===
+                    selectedSellerId.value
+            )
+        },
+    )
+})
+
+const hasMissingCheckoutItems =
+    computed(() => {
+        if (!checkoutContext.value) {
+            return true
+        }
+
+        return (
+            checkoutItems.value.length !==
+            checkoutContext.value
+                .cart_item_ids.length
+        )
+    })
+
+const checkoutItemCount = computed(() => {
+    return checkoutItems.value.reduce(
+        (total, item) => {
+            return (
+                total +
+                Number(item.quantity)
+            )
+        },
+        0,
+    )
+})
+
+const checkoutSubtotal = computed(() => {
+    return checkoutItems.value.reduce(
+        (total, item) => {
+            return (
+                total +
+                Number(item.price) *
+                    Number(item.quantity)
+            )
+        },
+        0,
+    )
+})
+
+/*
+ * Backend hiện đặt shipping_fee = 0.
+ * Voucher và tổng tiền cuối cùng vẫn được backend
+ * kiểm tra, tính lại từ database.
+ */
 const shippingFee = computed(() => {
-    if (cartStore.isEmpty) {
-        return 0
-    }
-
-    if (cartStore.subtotal >= 500000) {
-        return 0
-    }
-
-    return 30000
+    return 0
 })
 
 const grandTotal = computed(() => {
     return (
-        cartStore.subtotal +
+        checkoutSubtotal.value +
         shippingFee.value
     )
 })
 
+const checkoutUnavailableMessage =
+    computed(() => {
+        if (!checkoutContext.value) {
+            return 'Thông tin thanh toán không còn hợp lệ. Vui lòng chọn lại sản phẩm trong giỏ hàng.'
+        }
+
+        if (cartStore.isEmpty) {
+            return 'Giỏ hàng của bạn đang trống.'
+        }
+
+        if (hasMissingCheckoutItems.value) {
+            return 'Một hoặc nhiều sản phẩm đã chọn không còn trong giỏ hàng hoặc không thuộc người bán đã chọn.'
+        }
+
+        if (checkoutItems.value.length === 0) {
+            return 'Không tìm thấy sản phẩm phù hợp để thanh toán.'
+        }
+
+        return ''
+    })
+
 const canSubmit = computed(() => {
     return (
-        !cartStore.isEmpty &&
-        selectedAddressId.value !== null &&
+        Boolean(checkoutContext.value) &&
+        checkoutItems.value.length > 0 &&
+        !hasMissingCheckoutItems.value &&
+        selectedSellerId.value !== null &&
+        Boolean(selectedAddress.value) &&
         paymentMethod.value === 'cod' &&
         !isSubmitting.value
     )
 })
 
 function formatPrice(value) {
-    return new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-        maximumFractionDigits: 0,
-    }).format(value)
+    return new Intl.NumberFormat(
+        'vi-VN',
+        {
+            style: 'currency',
+            currency: 'VND',
+            maximumFractionDigits: 0,
+        },
+    ).format(
+        Number(value ?? 0),
+    )
 }
 
 function selectAddress(address) {
@@ -130,29 +336,156 @@ function editAddress(address) {
 }
 
 function addAddress() {
-    console.log('Open address form')
+    console.log(
+        'Open address form',
+    )
 }
 
 function buildOrderPayload() {
+    const context =
+        checkoutContext.value
+
+    const address =
+        selectedAddress.value
+
+    if (!context) {
+        throw new Error(
+            'Thông tin checkout không còn hợp lệ.',
+        )
+    }
+
+    if (!address) {
+        throw new Error(
+            'Vui lòng chọn địa chỉ nhận hàng.',
+        )
+    }
+
     return {
-        address_id:
-            selectedAddressId.value,
+        seller_id:
+            context.seller_id,
 
-        payment_method:
-            paymentMethod.value,
+        cart_item_ids:
+            context.cart_item_ids,
 
-        note:
-            orderNote.value.trim() ||
+        idempotency_key:
+            context.idempotency_key,
+
+        voucher_code:
+            cartStore.voucherCode ||
             null,
 
-        items: cartStore.items.map(
-            (item) => ({
-                product_id: item.id,
-                quantity: item.quantity,
-            }),
-        ),
+        shipping_name:
+            address.recipientName,
+
+        shipping_phone:
+            address.phone,
+
+        shipping_address:
+            address.fullAddress,
+
+        customer_note:
+            orderNote.value.trim() ||
+            null,
     }
 }
+
+function getFirstValidationError(
+    validationErrors,
+) {
+    if (
+        !validationErrors ||
+        typeof validationErrors !==
+            'object'
+    ) {
+        return null
+    }
+
+    const messages = Object.values(
+        validationErrors,
+    ).flat()
+
+    return messages[0] ?? null
+}
+
+function handleCheckoutError(error) {
+    const status =
+        error.response?.status
+
+    const responseData =
+        error.response?.data
+
+    const backendMessage =
+        responseData?.message
+
+    if (status === 401) {
+        submitError.value =
+            'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+
+        return
+    }
+
+    if (status === 403) {
+        submitError.value =
+            backendMessage ??
+            'Tài khoản không được phép thực hiện checkout.'
+
+        return
+    }
+
+    if (status === 422) {
+        const validationMessage =
+            getFirstValidationError(
+                responseData?.errors,
+            )
+
+        submitError.value =
+            validationMessage ??
+            backendMessage ??
+            'Thông tin đặt hàng chưa hợp lệ.'
+
+        return
+    }
+
+    if (status === 409) {
+        submitError.value =
+            backendMessage ??
+            'Tồn kho hoặc dữ liệu đơn hàng đã thay đổi.'
+
+        return
+    }
+
+    if (status === 429) {
+        submitError.value =
+            'Bạn thao tác quá nhanh. Vui lòng thử lại sau.'
+
+        return
+    }
+
+    const isNetworkError =
+        error.code === 'ECONNABORTED' ||
+        Boolean(
+            error.request &&
+            !error.response,
+        )
+
+    if (isNetworkError) {
+        /*
+         * Không xóa checkout context.
+         * Khi retry, frontend gửi lại cùng idempotency key.
+         */
+        submitError.value =
+            'Không nhận được phản hồi từ máy chủ. Bạn có thể thử lại mà không bị tạo trùng đơn.'
+
+        return
+    }
+
+    submitError.value =
+        backendMessage ??
+        error.message ??
+        'Không thể tạo đơn hàng. Vui lòng thử lại.'
+}
+
+
 
 async function submitOrder() {
     if (!canSubmit.value) {
@@ -166,47 +499,47 @@ async function submitOrder() {
         const payload =
             buildOrderPayload()
 
-        // const response =
-        //     await createOrder(payload)
+        const response =
+            await createOrder(payload)
 
-        // const createdOrder =
-        //     response.data.data
+        const responseData =
+            response.data?.data ??
+            response.data
 
-        await new Promise((resolve) => {
-            setTimeout(resolve, 800)
-        })
+        const orderCode =
+            responseData?.order_code ??
+            responseData?.code
 
-        const createdOrder = {
-            id: Date.now(),
-            code: `NC${Date.now()
-                .toString()
-                .slice(-8)}`,
+        if (!orderCode) {
+          
+            throw new Error(
+                'Không nhận được mã đơn hàng từ máy chủ.',
+            )
         }
-        cartStore.clearCart()
+        await cartStore.fetchCart()
+        const checkedOutCartItemIds = [
+            ...checkoutContext.value
+                .cart_item_ids,
+        ]
 
-        router.replace({
+        sessionStorage.removeItem(
+            CHECKOUT_CONTEXT_KEY,
+        )
+
+        removeCheckedOutItems(
+            checkedOutCartItemIds,
+        )
+
+        checkoutContext.value = null
+
+        await router.replace({
             name: 'order-success',
             params: {
-                orderCode:
-                    createdOrder.code,
+                orderCode,
             },
         })
     } catch (error) {
-        const status =
-            error.response?.status
-
-        if (status === 422) {
-            submitError.value =
-                error.response?.data?.message ??
-                'Thông tin đặt hàng chưa hợp lệ.'
-        } else if (status === 409) {
-            submitError.value =
-                error.response?.data?.message ??
-                'Tồn kho của một số sản phẩm đã thay đổi.'
-        } else {
-            submitError.value =
-                'Không thể tạo đơn hàng. Vui lòng thử lại.'
-        }
+        handleCheckoutError(error)
     } finally {
         isSubmitting.value = false
     }
@@ -215,7 +548,10 @@ async function submitOrder() {
 
 <template>
     <div class="checkout-page">
-        <nav class="breadcrumb" aria-label="Breadcrumb">
+        <nav
+            class="breadcrumb"
+            aria-label="Breadcrumb"
+        >
             <RouterLink to="/">
                 Trang chủ
             </RouterLink>
@@ -235,7 +571,9 @@ async function submitOrder() {
 
         <header class="checkout-header">
             <div>
-                <p class="checkout-header__eyebrow">
+                <p
+                    class="checkout-header__eyebrow"
+                >
                     Hoàn tất đơn hàng
                 </p>
 
@@ -248,15 +586,26 @@ async function submitOrder() {
                 </p>
             </div>
 
-            <RouterLink to="/cart" class="checkout-header__back">
+            <RouterLink
+                to="/cart"
+                class="checkout-header__back"
+            >
                 <ArrowLeft :size="17" />
 
                 Quay lại giỏ hàng
             </RouterLink>
         </header>
 
-        <section v-if="cartStore.isEmpty" class="empty-checkout">
-            <div class="empty-checkout__icon">
+        <section
+            v-if="
+                checkoutItems.length === 0 ||
+                hasMissingCheckoutItems
+            "
+            class="empty-checkout"
+        >
+            <div
+                class="empty-checkout__icon"
+            >
                 <ShoppingBag :size="30" />
             </div>
 
@@ -265,20 +614,26 @@ async function submitOrder() {
             </h2>
 
             <p>
-                Giỏ hàng của bạn đang trống.
-                Hãy thêm sản phẩm trước khi tiến
-                hành thanh toán.
+                {{ checkoutUnavailableMessage }}
             </p>
 
-            <RouterLink to="/products" class="empty-checkout__button">
-                Khám phá sản phẩm
+            <RouterLink
+                to="/cart"
+                class="empty-checkout__button"
+            >
+                Quay lại giỏ hàng
             </RouterLink>
         </section>
 
-        <div v-else class="checkout-layout">
+        <div
+            v-else
+            class="checkout-layout"
+        >
             <div class="checkout-content">
                 <section class="checkout-card">
-                    <header class="checkout-card__header">
+                    <header
+                        class="checkout-card__header"
+                    >
                         <div>
                             <MapPin :size="20" />
 
@@ -294,7 +649,11 @@ async function submitOrder() {
                             </div>
                         </div>
 
-                        <button type="button" class="checkout-card__action" @click="addAddress">
+                        <button
+                            type="button"
+                            class="checkout-card__action"
+                            @click="addAddress"
+                        >
                             <Plus :size="16" />
 
                             Thêm địa chỉ
@@ -302,14 +661,24 @@ async function submitOrder() {
                     </header>
 
                     <div class="address-list">
-                        <AddressCard v-for="address in addresses" :key="address.id" :address="address" :selected="selectedAddressId ===
-                            address.id
-                            " @select="selectAddress" @edit="editAddress" />
+                        <AddressCard
+                            v-for="address in addresses"
+                            :key="address.id"
+                            :address="address"
+                            :selected="
+                                selectedAddressId ===
+                                address.id
+                            "
+                            @select="selectAddress"
+                            @edit="editAddress"
+                        />
                     </div>
                 </section>
 
                 <section class="checkout-card">
-                    <header class="checkout-card__header">
+                    <header
+                        class="checkout-card__header"
+                    >
                         <div>
                             <PackageCheck :size="20" />
 
@@ -319,45 +688,69 @@ async function submitOrder() {
                                 </h2>
 
                                 <p>
-                                    {{
-                                        cartStore.itemCount
-                                    }}
+                                    {{ checkoutItemCount }}
                                     sản phẩm trong đơn hàng.
                                 </p>
                             </div>
                         </div>
 
-                        <RouterLink to="/cart" class="checkout-card__link">
+                        <RouterLink
+                            to="/cart"
+                            class="checkout-card__link"
+                        >
                             Chỉnh sửa
                         </RouterLink>
                     </header>
 
                     <div class="checkout-products">
-                        <article v-for="item in cartStore.items" :key="item.id" class="checkout-product">
-                            <RouterLink :to="{
-                                name:
-                                    'product-detail',
-                                params: {
-                                    slug:
-                                        item.slug,
-                                },
-                            }" class="checkout-product__image">
-                                <img :src="item.image" :alt="item.name" />
-                            </RouterLink>
-
-                            <div class="checkout-product__information">
-                                <p v-if="item.seller" class="checkout-product__seller">
-                                    {{ item.seller }}
-                                </p>
-
-                                <RouterLink :to="{
+                        <article
+                            v-for="item in checkoutItems"
+                            :key="item.id"
+                            class="checkout-product"
+                        >
+                            <RouterLink
+                                :to="{
                                     name:
                                         'product-detail',
                                     params: {
                                         slug:
                                             item.slug,
                                     },
-                                }" class="checkout-product__name">
+                                }"
+                                class="checkout-product__image"
+                            >
+                                <img
+                                    :src="item.image"
+                                    :alt="item.name"
+                                />
+                            </RouterLink>
+
+                            <div
+                                class="checkout-product__information"
+                            >
+                                <p
+                                    v-if="item.seller"
+                                    class="checkout-product__seller"
+                                >
+                                    {{
+                                        typeof item.seller ===
+                                        'string'
+                                            ? item.seller
+                                            : item.seller.name
+                                    }}
+                                </p>
+
+                                <RouterLink
+                                    :to="{
+                                        name:
+                                            'product-detail',
+                                        params: {
+                                            slug:
+                                                item.slug,
+                                        },
+                                    }"
+                                    class="checkout-product__name"
+                                >
                                     {{ item.name }}
                                 </RouterLink>
 
@@ -367,7 +760,9 @@ async function submitOrder() {
                                 </span>
                             </div>
 
-                            <div class="checkout-product__price">
+                            <div
+                                class="checkout-product__price"
+                            >
                                 <span>
                                     {{
                                         formatPrice(
@@ -379,8 +774,12 @@ async function submitOrder() {
                                 <strong>
                                     {{
                                         formatPrice(
-                                            item.price *
-                                            item.quantity,
+                                            Number(
+                                                item.price,
+                                            ) *
+                                                Number(
+                                                    item.quantity,
+                                                ),
                                         )
                                     }}
                                 </strong>
@@ -390,7 +789,9 @@ async function submitOrder() {
                 </section>
 
                 <section class="checkout-card">
-                    <header class="checkout-card__header">
+                    <header
+                        class="checkout-card__header"
+                    >
                         <div>
                             <CreditCard :size="20" />
 
@@ -408,26 +809,42 @@ async function submitOrder() {
                     </header>
 
                     <div class="payment-methods">
-                        <label class="payment-method" :class="{
-                            'payment-method--selected':
-                                paymentMethod ===
-                                'cod',
-                        }">
-                            <input v-model="paymentMethod
-                                " type="radio" value="cod" name="payment-method" />
-
-                            <span class="payment-method__control">
-                                <Check v-if="
+                        <label
+                            class="payment-method"
+                            :class="{
+                                'payment-method--selected':
                                     paymentMethod ===
-                                    'cod'
-                                " :size="13" />
+                                    'cod',
+                            }"
+                        >
+                            <input
+                                v-model="paymentMethod"
+                                type="radio"
+                                value="cod"
+                                name="payment-method"
+                            />
+
+                            <span
+                                class="payment-method__control"
+                            >
+                                <Check
+                                    v-if="
+                                        paymentMethod ===
+                                        'cod'
+                                    "
+                                    :size="13"
+                                />
                             </span>
 
-                            <span class="payment-method__icon">
+                            <span
+                                class="payment-method__icon"
+                            >
                                 <Banknote :size="22" />
                             </span>
 
-                            <span class="payment-method__content">
+                            <span
+                                class="payment-method__content"
+                            >
                                 <strong>
                                     Thanh toán khi nhận hàng
                                 </strong>
@@ -439,14 +856,22 @@ async function submitOrder() {
                             </span>
                         </label>
 
-                        <div class="payment-method payment-method--disabled">
-                            <span class="payment-method__control" />
+                        <div
+                            class="payment-method payment-method--disabled"
+                        >
+                            <span
+                                class="payment-method__control"
+                            />
 
-                            <span class="payment-method__icon">
+                            <span
+                                class="payment-method__icon"
+                            >
                                 <CreditCard :size="22" />
                             </span>
 
-                            <span class="payment-method__content">
+                            <span
+                                class="payment-method__content"
+                            >
                                 <strong>
                                     Thanh toán trực tuyến
                                 </strong>
@@ -457,7 +882,9 @@ async function submitOrder() {
                                 </span>
                             </span>
 
-                            <span class="payment-method__coming">
+                            <span
+                                class="payment-method__coming"
+                            >
                                 Sắp có
                             </span>
                         </div>
@@ -465,7 +892,9 @@ async function submitOrder() {
                 </section>
 
                 <section class="checkout-card">
-                    <header class="checkout-card__header">
+                    <header
+                        class="checkout-card__header"
+                    >
                         <div>
                             <ShoppingBag :size="20" />
 
@@ -483,8 +912,11 @@ async function submitOrder() {
                     </header>
 
                     <div class="order-note">
-                        <textarea v-model="orderNote" maxlength="500"
-                            placeholder="Ví dụ: Giao hàng trong giờ hành chính" />
+                        <textarea
+                            v-model="orderNote"
+                            maxlength="500"
+                            placeholder="Ví dụ: Giao hàng trong giờ hành chính"
+                        />
 
                         <span>
                             {{ orderNote.length }}/500
@@ -494,7 +926,9 @@ async function submitOrder() {
             </div>
 
             <aside class="checkout-summary">
-                <div class="checkout-summary__header">
+                <div
+                    class="checkout-summary__header"
+                >
                     <ShoppingBag :size="20" />
 
                     <h2>
@@ -502,48 +936,47 @@ async function submitOrder() {
                     </h2>
                 </div>
 
-                <div v-if="selectedAddress" class="checkout-summary__address">
+                <div
+                    v-if="selectedAddress"
+                    class="checkout-summary__address"
+                >
                     <span>
                         Giao đến
                     </span>
 
                     <strong>
                         {{
-                            selectedAddress.recipientName
+                            selectedAddress
+                                .recipientName
                         }}
                     </strong>
 
                     <p>
                         {{
-                            selectedAddress.fullAddress
+                            selectedAddress
+                                .fullAddress
                         }}
                     </p>
                 </div>
 
-                <dl class="checkout-summary__details">
+                <dl
+                    class="checkout-summary__details"
+                >
+                    <div>
+                        <dt>Sản phẩm đã chọn</dt>
+
+                        <dd>
+                            {{ checkoutItemCount }}
+                        </dd>
+                    </div>
+
                     <div>
                         <dt>Tạm tính</dt>
 
                         <dd>
                             {{
                                 formatPrice(
-                                    cartStore.subtotal,
-                                )
-                            }}
-                        </dd>
-                    </div>
-
-                    <div v-if="
-                        cartStore.discountAmount >
-                        0
-                    ">
-                        <dt>Tiết kiệm</dt>
-
-                        <dd class="checkout-summary__discount">
-                            −{{
-                                formatPrice(
-                                    cartStore
-                                        .discountAmount,
+                                    checkoutSubtotal,
                                 )
                             }}
                         </dd>
@@ -553,9 +986,10 @@ async function submitOrder() {
                         <dt>Phí vận chuyển</dt>
 
                         <dd>
-                            <span v-if="
-                                shippingFee === 0
-                            " class="checkout-summary__free">
+                            <span
+                                v-if="shippingFee === 0"
+                                class="checkout-summary__free"
+                            >
                                 Miễn phí
                             </span>
 
@@ -570,9 +1004,16 @@ async function submitOrder() {
                     </div>
                 </dl>
 
-                <div class="checkout-summary__total">
+                <p class="checkout-summary__notice">
+                    Giá, voucher và tổng tiền cuối cùng
+                    sẽ được backend kiểm tra lại từ database.
+                </p>
+
+                <div
+                    class="checkout-summary__total"
+                >
                     <span>
-                        Tổng thanh toán
+                        Tổng tạm tính
                     </span>
 
                     <strong>
@@ -584,7 +1025,11 @@ async function submitOrder() {
                     </strong>
                 </div>
 
-                <div v-if="submitError" class="checkout-error" role="alert">
+                <div
+                    v-if="submitError"
+                    class="checkout-error"
+                    role="alert"
+                >
                     <CircleAlert :size="18" />
 
                     <span>
@@ -592,15 +1037,25 @@ async function submitOrder() {
                     </span>
                 </div>
 
-                <button type="button" class="place-order-button" :disabled="!canSubmit" @click="submitOrder">
-                    <span v-if="isSubmitting" class="place-order-button__spinner" />
+                <button
+                    type="button"
+                    class="place-order-button"
+                    :disabled="!canSubmit"
+                    @click="submitOrder"
+                >
+                    <span
+                        v-if="isSubmitting"
+                        class="place-order-button__spinner"
+                    />
 
                     <template v-else>
                         Đặt hàng
                     </template>
                 </button>
 
-                <p class="checkout-summary__agreement">
+                <p
+                    class="checkout-summary__agreement"
+                >
                     Bằng việc đặt hàng, bạn đồng ý
                     với điều khoản sử dụng và chính
                     sách mua hàng của NexaCart.
@@ -726,13 +1181,13 @@ async function submitOrder() {
     border-bottom: 1px solid var(--color-border);
 }
 
-.checkout-card__header>div {
+.checkout-card__header > div {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.checkout-card__header>div>svg {
+.checkout-card__header > div > svg {
     flex-shrink: 0;
     color: var(--color-primary-700);
 }
@@ -819,7 +1274,7 @@ async function submitOrder() {
     color: var(--color-primary-700);
 }
 
-.checkout-product__information>span {
+.checkout-product__information > span {
     color: var(--color-text-muted);
     font-size: 11px;
 }
@@ -863,7 +1318,7 @@ async function submitOrder() {
         background-color var(--transition-fast);
 }
 
-.payment-method>input {
+.payment-method > input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
@@ -955,7 +1410,7 @@ async function submitOrder() {
         0 0 0 4px rgb(113 56 214 / 10%);
 }
 
-.order-note>span {
+.order-note > span {
     position: absolute;
     right: 34px;
     bottom: 31px;
@@ -999,7 +1454,7 @@ async function submitOrder() {
     border-radius: var(--radius-md);
 }
 
-.checkout-summary__address>span {
+.checkout-summary__address > span {
     color: var(--color-text-muted);
     font-size: 10px;
 }
@@ -1020,7 +1475,7 @@ async function submitOrder() {
     padding: 2px 20px 20px;
 }
 
-.checkout-summary__details>div {
+.checkout-summary__details > div {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1039,9 +1494,19 @@ async function submitOrder() {
     font-weight: 600;
 }
 
-.checkout-summary__discount,
 .checkout-summary__free {
     color: var(--color-success) !important;
+}
+
+.checkout-summary__notice {
+    margin: 0 20px 16px;
+    padding: 11px 12px;
+    color: var(--color-text-muted);
+    background: var(--color-gray-50);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 10px;
+    line-height: 1.55;
 }
 
 .checkout-summary__total {
@@ -1107,7 +1572,8 @@ async function submitOrder() {
     border: 2px solid rgb(255 255 255 / 35%);
     border-top-color: var(--color-white);
     border-radius: 50%;
-    animation: checkout-spin 700ms linear infinite;
+    animation:
+        checkout-spin 700ms linear infinite;
 }
 
 .checkout-summary__agreement {
