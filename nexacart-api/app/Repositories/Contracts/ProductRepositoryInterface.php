@@ -28,4 +28,5 @@ interface ProductRepositoryInterface
     public function delete(
         Product $product
     ): void;
+    public function getProductBySlug(string $slug): Product;
 }

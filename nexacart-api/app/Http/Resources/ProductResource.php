@@ -43,15 +43,59 @@ class ProductResource extends JsonResource
                 $this->whenLoaded('brand')
             ),
 
-            'seller' => new UserResource(
-                $this->whenLoaded('seller')
+            'seller' => $this->whenLoaded(
+                'seller',
+                function () {
+                    return [
+                        'id' =>
+                        $this->seller->id,
+
+                        'name' =>
+                        $this->seller->name,
+
+                        'shop' =>
+                        $this->seller->relationLoaded(
+                            'shop'
+                        )
+                            ? (
+                                $this->seller->shop
+                                ? [
+                                    'id' =>
+                                    $this->seller
+                                        ->shop
+                                        ->id,
+
+                                    'name' =>
+                                    $this->seller
+                                        ->shop
+                                        ->name,
+
+                                    'slug' =>
+                                    $this->seller
+                                        ->shop
+                                        ->slug,
+                                ]
+                                : null
+                            )
+                            : null,
+                    ];
+                }
             ),
+            'is_wishlisted' =>
+            (bool)
+            $this->is_wishlisted,
             'average_rating' => $this->reviews_avg_rating !== null
                 ? round((float) $this->reviews_avg_rating, 1)
                 : null,
 
             'reviews_count' => $this->whenCounted(
                 'reviews'
+            ),
+            'reviews' =>
+            ReviewResource::collection(
+                $this->whenLoaded(
+                    'reviews'
+                )
             ),
 
             'created_at'

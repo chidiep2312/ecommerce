@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Models;
-
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Enums\ProductStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -117,8 +117,20 @@ class Product extends Model
             'suspended_by'
         );
     }
-      public function reviews()
+ 
+    public function wishlistedByUsers()
     {
-        return $this->hasMany(Review::class);
+        return $this->belongsToMany(
+            User::class,
+            'wishlists',
+            'product_id',
+            'user_id'
+        )->withTimestamps();
+    }
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(
+            Review::class
+        );
     }
 }

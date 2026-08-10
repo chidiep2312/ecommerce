@@ -48,47 +48,52 @@ const emit = defineEmits([
             </span>
         </button>
 
-        <div class="address-card__content">
-            <div class="address-card__heading">
-                <div>
-                    <strong>
-                        {{ address.recipientName }}
-                    </strong>
+       <div class="address-card__content">
+    <div class="address-card__heading">
+        <div>
+            <strong>
+                {{ address.recipient_name }}
+            </strong>
 
-                    <span
-                        v-if="address.isDefault"
-                        class="address-card__default"
-                    >
-                        Mặc định
-                    </span>
-                </div>
-
-                <button
-                    type="button"
-                    class="address-card__edit"
-                    aria-label="Chỉnh sửa địa chỉ"
-                    @click.stop="emit('edit', address)"
-                >
-                    <Pencil :size="16" />
-                </button>
-            </div>
-
-            <div class="address-card__line">
-                <Phone :size="15" />
-
-                <span>
-                    {{ address.phone }}
-                </span>
-            </div>
-
-            <div class="address-card__line">
-                <MapPin :size="15" />
-
-                <span>
-                    {{ address.fullAddress }}
-                </span>
-            </div>
+            <span
+                v-if="address.is_default"
+                class="address-card__default"
+            >
+                Mặc định
+            </span>
         </div>
+
+        <button
+            type="button"
+            class="address-card__edit"
+            aria-label="Chỉnh sửa địa chỉ"
+            @click.stop="
+                emit(
+                    'edit',
+                    address,
+                )
+            "
+        >
+            <Pencil :size="16" />
+        </button>
+    </div>
+
+    <div class="address-card__line">
+        <Phone :size="15" />
+
+        <span>
+            {{ address.phone }}
+        </span>
+    </div>
+
+    <div class="address-card__line">
+        <MapPin :size="15" />
+
+        <span>
+            {{ address.full_address }}
+        </span>
+    </div>
+</div>
     </article>
 </template>
 

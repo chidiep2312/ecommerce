@@ -28,6 +28,7 @@ class User extends Authenticatable
         'password',
         'role',
         'status',
+        'phone',
     ];
 
     /**
@@ -49,7 +50,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'role' => UserRole::class,
-        'status'=>UserStatus::class
+        'status' => UserStatus::class
     ];
 
     public function isAdmin(): bool
@@ -110,21 +111,56 @@ class User extends Authenticatable
         );
     }
 
-    public function reviews()
-    {
-        return $this->hasMany(Review::class);
-    }
-    public function sellerRequests(): HasMany
-{
-    return $this->hasMany(
-        SellerRequest::class,
-    );
-}
 
-public function latestSellerRequest(): HasOne
-{
-    return $this->hasOne(
-        SellerRequest::class,
-    )->latestOfMany();
-}
+    public function sellerRequests(): HasMany
+    {
+        return $this->hasMany(
+            SellerRequest::class,
+        );
+    }
+
+    public function latestSellerRequest(): HasOne
+    {
+        return $this->hasOne(
+            SellerRequest::class,
+        )->latestOfMany();
+    }
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(
+            Address::class
+        );
+    }
+
+    public function defaultAddress(): HasOne
+    {
+        return $this->hasOne(
+            Address::class
+        )->where(
+            'is_default',
+            true
+        );
+    }
+    public function wishlistProducts()
+    {
+        return $this->belongsToMany(
+            Product::class,
+            'wishlists',
+            'user_id',
+            'product_id'
+        )->withTimestamps();
+    }
+    public function shop(): HasOne
+    {
+        return $this->hasOne(
+            Shop::class
+        );
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(
+            Review::class
+        );
+    }
 }

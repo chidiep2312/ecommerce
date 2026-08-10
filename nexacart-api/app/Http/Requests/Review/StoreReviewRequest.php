@@ -17,14 +17,13 @@ class StoreReviewRequest extends FormRequest
             'rating' => [
                 'required',
                 'integer',
-                'min:1',
-                'max:5',
+                'between:1,5',
             ],
 
             'comment' => [
                 'nullable',
                 'string',
-                'max:2000',
+                'max:1000',
             ],
         ];
     }
@@ -32,20 +31,17 @@ class StoreReviewRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'rating.required'
-                => 'Điểm đánh giá không được để trống.',
+            'rating.required' =>
+                'Vui lòng chọn số sao đánh giá.',
 
-            'rating.integer'
-                => 'Điểm đánh giá phải là số nguyên.',
+            'rating.integer' =>
+                'Số sao đánh giá không hợp lệ.',
 
-            'rating.min'
-                => 'Điểm đánh giá tối thiểu là 1.',
+            'rating.between' =>
+                'Đánh giá phải từ 1 đến 5 sao.',
 
-            'rating.max'
-                => 'Điểm đánh giá tối đa là 5.',
-
-            'comment.max'
-                => 'Nội dung đánh giá tối đa 2000 ký tự.',
+            'comment.max' =>
+                'Nội dung đánh giá không được vượt quá 1000 ký tự.',
         ];
     }
 }

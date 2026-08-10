@@ -29,6 +29,11 @@ import BaseCheckbox from '@/components/base/BaseCheckbox.vue'
 import BasePagination from '@/components/base/BasePagination.vue'
 import ProductCard from '@/components/customer/ProductCard.vue'
 import { useCartStore } from '@/stores/cart'
+import {
+    getWishlist,
+    removeFromWishlist,
+    addToWishlist
+} from '@/api/wishlist'
 
 const route = useRoute()
 const router = useRouter()
@@ -361,10 +366,10 @@ function normalizeProduct(product) {
                 product.rating,
         ),
 
-        // reviews: toNumber(
-        //     product.reviews_count ??
-        //         product.reviews,
-        // ),
+        reviews: toNumber(
+            product.reviews_count ??
+                product.reviews,
+        ),
 
         badge:
             salePrice !== null
@@ -551,7 +556,7 @@ async function fetchProducts() {
             await getProducts(
                 buildProductParams(),
             )
-
+     
         const {
             items,
             meta,
@@ -724,7 +729,7 @@ async function handleAddToCart(product) {
             product.id,
             1,
         )
-        console.log(product.id)
+        
     } catch (error) {
         console.error(
             'Không thể thêm sản phẩm:',
@@ -733,11 +738,24 @@ async function handleAddToCart(product) {
     }
 }
 
-function handleToggleWishlist(product) {
-    console.log(
-        'Toggle wishlist:',
-        product,
+async  function handleToggleWishlist(product) {
+   if (product.is_wishlisted) {
+        await removeFromWishlist(
+            product.id,
+        )
+
+        product.is_wishlisted =
+            false
+
+        return
+    }
+
+    await addToWishlist(
+        product.id,
     )
+
+    product.is_wishlisted =
+        true
 }
 
 watch(
@@ -755,10 +773,7 @@ watch(
         values,
         previousValues = [],
     ) => {
-        /*
-         * Backend nhận một category.
-         * Chọn category mới sẽ bỏ category cũ.
-         */
+       
         if (values.length > 1) {
             const addedValue =
                 values.find((value) => {
@@ -787,9 +802,7 @@ watch(
         values,
         previousValues = [],
     ) => {
-        /*
-         * Backend nhận một brand.
-         */
+       
         if (values.length > 1) {
             const addedValue =
                 values.find((value) => {

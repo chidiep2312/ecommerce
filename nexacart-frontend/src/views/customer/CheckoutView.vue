@@ -12,20 +12,36 @@ import {
     ShieldCheck,
     ShoppingBag,
     Truck,
+    TicketPercent,
 } from '@lucide/vue'
 
 import {
     computed,
+    onMounted,
     ref,
 } from 'vue'
 
-import { useRouter } from 'vue-router'
+import {
+    useRouter,
+} from 'vue-router'
 
-import AddressCard from '@/components/customer/AddressCard.vue'
+import {
+    getCustomerAddresses,
+} from '@/api/address'
 
-import { createOrder } from '@/api/orders'
-import { useCartStore } from '@/stores/cart'
+import AddressCard
+    from '@/components/customer/AddressCard.vue'
 
+import {
+    createOrder,
+} from '@/api/orders'
+
+import {
+    useCartStore,
+} from '@/stores/cart'
+import {
+    validateVoucher,
+} from '@/api/voucher'
 const CHECKOUT_CONTEXT_KEY =
     'nexacart_checkout_context'
 
@@ -34,50 +50,125 @@ const cartStore = useCartStore()
 
 const isSubmitting = ref(false)
 const submitError = ref('')
+
 const orderNote = ref('')
 const paymentMethod = ref('cod')
 
-const addresses = ref([
-    {
-        id: 1,
-        recipientName: 'Diệp Kim Chi',
-        phone: '0901234567',
-        province: 'Thành phố Hồ Chí Minh',
-        district: 'Quận 1',
-        ward: 'Phường Bến Nghé',
-        addressLine: '123 đường Nguyễn Huệ',
-        fullAddress:
-            '123 đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, Thành phố Hồ Chí Minh',
-        isDefault: true,
-    },
-    {
-        id: 2,
-        recipientName: 'Diệp Kim Chi',
-        phone: '0901234567',
-        province: 'Đồng Nai',
-        district: 'Thành phố Biên Hòa',
-        ward: 'Phường Tân Mai',
-        addressLine: '45 đường Đồng Khởi',
-        fullAddress:
-            '45 đường Đồng Khởi, Phường Tân Mai, Thành phố Biên Hòa, Đồng Nai',
-        isDefault: false,
-    },
-])
+const addresses = ref([])
+const isAddressLoading = ref(false)
 
-const selectedAddressId = ref(
-    addresses.value.find(
-        (address) => address.isDefault,
-    )?.id ?? null,
-)
+const selectedAddressId = ref(null)
+const voucherCode = ref('')
 
-const selectedAddress = computed(() => {
-    return addresses.value.find(
-        (address) => {
-            return (
-                address.id ===
-                selectedAddressId.value
+const appliedVoucher = ref(null)
+
+const voucherDiscount = ref(0)
+
+const voucherError = ref('')
+
+const voucherSuccess = ref('')
+
+const isVoucherLoading = ref(false)
+async function applyVoucher() {
+    if (isVoucherLoading.value) {
+        return
+    }
+
+    const code =
+        voucherCode.value
+            .trim()
+            .toUpperCase()
+
+    if (!code) {
+        voucherError.value =
+            'Vui lòng nhập mã voucher.'
+
+        return
+    }
+
+    if (
+        checkoutSubtotal.value <= 0
+    ) {
+        voucherError.value =
+            'Không có sản phẩm để áp dụng voucher.'
+
+        return
+    }
+
+    isVoucherLoading.value = true
+
+    voucherError.value = ''
+    voucherSuccess.value = ''
+
+    try {
+        const response =
+            await validateVoucher({
+                code,
+
+                subtotal:
+                    checkoutSubtotal.value,
+            })
+
+        const data =
+            response.data?.data
+
+        appliedVoucher.value =
+            data?.voucher ?? null
+
+        voucherDiscount.value =
+            Number(
+                data
+                    ?.discount_amount ??
+                0,
             )
-        },
+
+        voucherCode.value =
+            data?.voucher?.code ??
+            code
+
+        voucherSuccess.value =
+            response.data?.message ??
+            'Áp dụng voucher thành công.'
+    } catch (error) {
+        appliedVoucher.value = null
+
+        voucherDiscount.value = 0
+
+        voucherError.value =
+            error.response?.data
+                ?.message ??
+            getFirstValidationError(
+                error.response?.data
+                    ?.errors,
+            ) ??
+            'Voucher không hợp lệ.'
+    } finally {
+        isVoucherLoading.value = false
+    }
+}
+
+function removeVoucher() {
+    voucherCode.value = ''
+
+    appliedVoucher.value = null
+
+    voucherDiscount.value = 0
+
+    voucherError.value = ''
+    voucherSuccess.value = ''
+}
+const selectedAddress = computed(() => {
+    return (
+        addresses.value.find(
+            address => {
+                return (
+                    Number(address.id) ===
+                    Number(
+                        selectedAddressId.value,
+                    )
+                )
+            },
+        ) ?? null
     )
 })
 
@@ -95,6 +186,49 @@ function resolveSellerId(item) {
     }
 
     return sellerId
+}
+
+
+async function fetchAddresses() {
+    isAddressLoading.value = true
+
+    try {
+        const response =
+            await getCustomerAddresses()
+
+        addresses.value =
+            Array.isArray(
+                response.data?.data,
+            )
+                ? response.data.data
+                : []
+
+
+        const defaultAddress =
+            addresses.value.find(
+                address => {
+                    return Boolean(
+                        address.is_default,
+                    )
+                },
+            )
+
+        selectedAddressId.value =
+            defaultAddress?.id ??
+            addresses.value[0]?.id ??
+            null
+    } catch (error) {
+        console.error(
+            'Không thể tải địa chỉ:',
+            error,
+        )
+
+        submitError.value =
+            error.response?.data?.message ??
+            'Không thể tải địa chỉ giao hàng.'
+    } finally {
+        isAddressLoading.value = false
+    }
 }
 
 function readCheckoutContext() {
@@ -115,13 +249,16 @@ function readCheckoutContext() {
             parsedValue.seller_id,
         )
 
-        const cartItemIds = Array.isArray(
-            parsedValue.cart_item_ids,
-        )
-            ? parsedValue.cart_item_ids.map(
-                (itemId) => Number(itemId),
+        const cartItemIds =
+            Array.isArray(
+                parsedValue.cart_item_ids,
             )
-            : []
+                ? parsedValue
+                    .cart_item_ids
+                    .map(itemId => {
+                        return Number(itemId)
+                    })
+                : []
 
         const uniqueCartItemIds = [
             ...new Set(cartItemIds),
@@ -134,7 +271,7 @@ function readCheckoutContext() {
         const areCartItemsValid =
             uniqueCartItemIds.length > 0 &&
             uniqueCartItemIds.every(
-                (itemId) => {
+                itemId => {
                     return (
                         Number.isInteger(
                             itemId,
@@ -144,12 +281,13 @@ function readCheckoutContext() {
                 },
             )
 
-        const isIdempotencyKeyValid =
-            typeof parsedValue
-                .idempotency_key ===
-                'string' &&
+        const idempotencyKey =
             parsedValue.idempotency_key
-                .trim() !== ''
+
+        const isIdempotencyKeyValid =
+            typeof idempotencyKey ===
+            'string' &&
+            idempotencyKey.trim() !== ''
 
         if (
             !isSellerValid ||
@@ -165,14 +303,16 @@ function readCheckoutContext() {
 
         return {
             seller_id: sellerId,
+
             cart_item_ids:
                 uniqueCartItemIds,
+
             idempotency_key:
-                parsedValue.idempotency_key,
+                idempotencyKey,
         }
     } catch (error) {
         console.error(
-            'Không thể đọc thông tin checkout:',
+            'Không thể đọc checkout context:',
             error,
         )
 
@@ -203,13 +343,14 @@ const selectedSellerId = computed(() => {
     )
 })
 
+
 const checkoutItems = computed(() => {
     if (!checkoutContext.value) {
         return []
     }
 
     return cartStore.items.filter(
-        (item) => {
+        item => {
             const itemId = Number(
                 item.id,
             )
@@ -218,11 +359,12 @@ const checkoutItems = computed(() => {
                 selectedCartItemIdSet.value
                     .has(itemId) &&
                 resolveSellerId(item) ===
-                    selectedSellerId.value
+                selectedSellerId.value
             )
         },
     )
 })
+
 
 const hasMissingCheckoutItems =
     computed(() => {
@@ -237,44 +379,45 @@ const hasMissingCheckoutItems =
         )
     })
 
-const checkoutItemCount = computed(() => {
-    return checkoutItems.value.reduce(
-        (total, item) => {
-            return (
-                total +
-                Number(item.quantity)
-            )
-        },
-        0,
-    )
-})
-
-const checkoutSubtotal = computed(() => {
-    return checkoutItems.value.reduce(
-        (total, item) => {
-            return (
-                total +
-                Number(item.price) *
+const checkoutItemCount =
+    computed(() => {
+        return checkoutItems.value.reduce(
+            (total, item) => {
+                return (
+                    total +
                     Number(item.quantity)
-            )
-        },
-        0,
-    )
-})
+                )
+            },
+            0,
+        )
+    })
 
-/*
- * Backend hiện đặt shipping_fee = 0.
- * Voucher và tổng tiền cuối cùng vẫn được backend
- * kiểm tra, tính lại từ database.
- */
+
+const checkoutSubtotal =
+    computed(() => {
+        return checkoutItems.value.reduce(
+            (total, item) => {
+                return (
+                    total +
+                    Number(item.price) *
+                    Number(item.quantity)
+                )
+            },
+            0,
+        )
+    })
+
+
 const shippingFee = computed(() => {
     return 0
 })
 
 const grandTotal = computed(() => {
-    return (
-        checkoutSubtotal.value +
-        shippingFee.value
+    return Math.max(
+        0,
+        checkoutSubtotal.value -
+        voucherDiscount.value +
+        shippingFee.value,
     )
 })
 
@@ -288,11 +431,16 @@ const checkoutUnavailableMessage =
             return 'Giỏ hàng của bạn đang trống.'
         }
 
-        if (hasMissingCheckoutItems.value) {
+        if (
+            hasMissingCheckoutItems.value
+        ) {
             return 'Một hoặc nhiều sản phẩm đã chọn không còn trong giỏ hàng hoặc không thuộc người bán đã chọn.'
         }
 
-        if (checkoutItems.value.length === 0) {
+        if (
+            checkoutItems.value.length ===
+            0
+        ) {
             return 'Không tìm thấy sản phẩm phù hợp để thanh toán.'
         }
 
@@ -301,12 +449,18 @@ const checkoutUnavailableMessage =
 
 const canSubmit = computed(() => {
     return (
-        Boolean(checkoutContext.value) &&
+        Boolean(
+            checkoutContext.value,
+        ) &&
         checkoutItems.value.length > 0 &&
         !hasMissingCheckoutItems.value &&
         selectedSellerId.value !== null &&
-        Boolean(selectedAddress.value) &&
-        paymentMethod.value === 'cod' &&
+        Boolean(
+            selectedAddress.value,
+        ) &&
+        paymentMethod.value ===
+        'cod' &&
+        !isAddressLoading.value &&
         !isSubmitting.value
     )
 })
@@ -325,21 +479,26 @@ function formatPrice(value) {
 }
 
 function selectAddress(address) {
-    selectedAddressId.value = address.id
+    selectedAddressId.value =
+        address.id
 }
 
-function editAddress(address) {
-    console.log(
-        'Edit address:',
-        address,
-    )
+/*
+ * Tạm thời chuyển sang trang quản lý
+ * địa chỉ thay vì console.log.
+ */
+function editAddress() {
+    router.push({
+        name: 'customer-addresses',
+    })
 }
 
 function addAddress() {
-    console.log(
-        'Open address form',
-    )
+    router.push({
+        name: 'customer-addresses',
+    })
 }
+
 
 function buildOrderPayload() {
     const context =
@@ -367,21 +526,18 @@ function buildOrderPayload() {
         cart_item_ids:
             context.cart_item_ids,
 
+        address_id:
+            address.id,
+
         idempotency_key:
             context.idempotency_key,
 
         voucher_code:
-            cartStore.voucherCode ||
+            appliedVoucher.value
+                ?.code ??
             null,
-
-        shipping_name:
-            address.recipientName,
-
-        shipping_phone:
-            address.phone,
-
-        shipping_address:
-            address.fullAddress,
+        payment_method:
+            paymentMethod.value,
 
         customer_note:
             orderNote.value.trim() ||
@@ -395,14 +551,15 @@ function getFirstValidationError(
     if (
         !validationErrors ||
         typeof validationErrors !==
-            'object'
+        'object'
     ) {
         return null
     }
 
-    const messages = Object.values(
-        validationErrors,
-    ).flat()
+    const messages =
+        Object.values(
+            validationErrors,
+        ).flat()
 
     return messages[0] ?? null
 }
@@ -462,7 +619,8 @@ function handleCheckoutError(error) {
     }
 
     const isNetworkError =
-        error.code === 'ECONNABORTED' ||
+        error.code ===
+        'ECONNABORTED' ||
         Boolean(
             error.request &&
             !error.response,
@@ -470,8 +628,10 @@ function handleCheckoutError(error) {
 
     if (isNetworkError) {
         /*
-         * Không xóa checkout context.
-         * Khi retry, frontend gửi lại cùng idempotency key.
+         * Giữ checkoutContext.
+         *
+         * Request retry sẽ gửi lại cùng
+         * idempotency_key.
          */
         submitError.value =
             'Không nhận được phản hồi từ máy chủ. Bạn có thể thử lại mà không bị tạo trùng đơn.'
@@ -484,8 +644,6 @@ function handleCheckoutError(error) {
         error.message ??
         'Không thể tạo đơn hàng. Vui lòng thử lại.'
 }
-
-
 
 async function submitOrder() {
     if (!canSubmit.value) {
@@ -500,40 +658,38 @@ async function submitOrder() {
             buildOrderPayload()
 
         const response =
-            await createOrder(payload)
+            await createOrder(
+                payload,
+            )
 
-        const responseData =
+        const order =
+            response.data?.data?.data ??
             response.data?.data ??
             response.data
 
         const orderCode =
-            responseData?.order_code ??
-            responseData?.code
+            order?.order_code ??
+            order?.code
 
         if (!orderCode) {
-          
             throw new Error(
                 'Không nhận được mã đơn hàng từ máy chủ.',
             )
         }
+
+
         await cartStore.fetchCart()
-        const checkedOutCartItemIds = [
-            ...checkoutContext.value
-                .cart_item_ids,
-        ]
+
 
         sessionStorage.removeItem(
             CHECKOUT_CONTEXT_KEY,
-        )
-
-        removeCheckedOutItems(
-            checkedOutCartItemIds,
         )
 
         checkoutContext.value = null
 
         await router.replace({
             name: 'order-success',
+
             params: {
                 orderCode,
             },
@@ -544,14 +700,29 @@ async function submitOrder() {
         isSubmitting.value = false
     }
 }
+
+onMounted(async () => {
+
+    if (
+        cartStore.items.length === 0
+    ) {
+        try {
+            await cartStore.fetchCart()
+        } catch (error) {
+            console.error(
+                'Không thể tải giỏ hàng:',
+                error,
+            )
+        }
+    }
+
+    await fetchAddresses()
+})
 </script>
 
 <template>
     <div class="checkout-page">
-        <nav
-            class="breadcrumb"
-            aria-label="Breadcrumb"
-        >
+        <nav class="breadcrumb" aria-label="Breadcrumb">
             <RouterLink to="/">
                 Trang chủ
             </RouterLink>
@@ -571,9 +742,7 @@ async function submitOrder() {
 
         <header class="checkout-header">
             <div>
-                <p
-                    class="checkout-header__eyebrow"
-                >
+                <p class="checkout-header__eyebrow">
                     Hoàn tất đơn hàng
                 </p>
 
@@ -586,26 +755,18 @@ async function submitOrder() {
                 </p>
             </div>
 
-            <RouterLink
-                to="/cart"
-                class="checkout-header__back"
-            >
+            <RouterLink to="/cart" class="checkout-header__back">
                 <ArrowLeft :size="17" />
 
                 Quay lại giỏ hàng
             </RouterLink>
         </header>
 
-        <section
-            v-if="
-                checkoutItems.length === 0 ||
-                hasMissingCheckoutItems
-            "
-            class="empty-checkout"
-        >
-            <div
-                class="empty-checkout__icon"
-            >
+        <section v-if="
+            checkoutItems.length === 0 ||
+            hasMissingCheckoutItems
+        " class="empty-checkout">
+            <div class="empty-checkout__icon">
                 <ShoppingBag :size="30" />
             </div>
 
@@ -617,23 +778,15 @@ async function submitOrder() {
                 {{ checkoutUnavailableMessage }}
             </p>
 
-            <RouterLink
-                to="/cart"
-                class="empty-checkout__button"
-            >
+            <RouterLink to="/cart" class="empty-checkout__button">
                 Quay lại giỏ hàng
             </RouterLink>
         </section>
 
-        <div
-            v-else
-            class="checkout-layout"
-        >
+        <div v-else class="checkout-layout">
             <div class="checkout-content">
                 <section class="checkout-card">
-                    <header
-                        class="checkout-card__header"
-                    >
+                    <header class="checkout-card__header">
                         <div>
                             <MapPin :size="20" />
 
@@ -649,11 +802,7 @@ async function submitOrder() {
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            class="checkout-card__action"
-                            @click="addAddress"
-                        >
+                        <button type="button" class="checkout-card__action" @click="addAddress">
                             <Plus :size="16" />
 
                             Thêm địa chỉ
@@ -661,24 +810,14 @@ async function submitOrder() {
                     </header>
 
                     <div class="address-list">
-                        <AddressCard
-                            v-for="address in addresses"
-                            :key="address.id"
-                            :address="address"
-                            :selected="
-                                selectedAddressId ===
-                                address.id
-                            "
-                            @select="selectAddress"
-                            @edit="editAddress"
-                        />
+                        <AddressCard v-for="address in addresses" :key="address.id" :address="address" :selected="selectedAddressId ===
+                            address.id
+                            " @select="selectAddress" @edit="editAddress" />
                     </div>
                 </section>
 
                 <section class="checkout-card">
-                    <header
-                        class="checkout-card__header"
-                    >
+                    <header class="checkout-card__header">
                         <div>
                             <PackageCheck :size="20" />
 
@@ -694,63 +833,42 @@ async function submitOrder() {
                             </div>
                         </div>
 
-                        <RouterLink
-                            to="/cart"
-                            class="checkout-card__link"
-                        >
+                        <RouterLink to="/cart" class="checkout-card__link">
                             Chỉnh sửa
                         </RouterLink>
                     </header>
 
                     <div class="checkout-products">
-                        <article
-                            v-for="item in checkoutItems"
-                            :key="item.id"
-                            class="checkout-product"
-                        >
-                            <RouterLink
-                                :to="{
+                        <article v-for="item in checkoutItems" :key="item.id" class="checkout-product">
+                            <RouterLink :to="{
+                                name:
+                                    'product-detail',
+                                params: {
+                                    slug:
+                                        item.slug,
+                                },
+                            }" class="checkout-product__image">
+                                <img :src="item.image" :alt="item.name" />
+                            </RouterLink>
+
+                            <div class="checkout-product__information">
+                                <p v-if="item.seller" class="checkout-product__seller">
+                                    {{
+                                        typeof item.seller ===
+                                            'string'
+                                            ? item.seller
+                                            : item.seller.name
+                                    }}
+                                </p>
+
+                                <RouterLink :to="{
                                     name:
                                         'product-detail',
                                     params: {
                                         slug:
                                             item.slug,
                                     },
-                                }"
-                                class="checkout-product__image"
-                            >
-                                <img
-                                    :src="item.image"
-                                    :alt="item.name"
-                                />
-                            </RouterLink>
-
-                            <div
-                                class="checkout-product__information"
-                            >
-                                <p
-                                    v-if="item.seller"
-                                    class="checkout-product__seller"
-                                >
-                                    {{
-                                        typeof item.seller ===
-                                        'string'
-                                            ? item.seller
-                                            : item.seller.name
-                                    }}
-                                </p>
-
-                                <RouterLink
-                                    :to="{
-                                        name:
-                                            'product-detail',
-                                        params: {
-                                            slug:
-                                                item.slug,
-                                        },
-                                    }"
-                                    class="checkout-product__name"
-                                >
+                                }" class="checkout-product__name">
                                     {{ item.name }}
                                 </RouterLink>
 
@@ -760,9 +878,7 @@ async function submitOrder() {
                                 </span>
                             </div>
 
-                            <div
-                                class="checkout-product__price"
-                            >
+                            <div class="checkout-product__price">
                                 <span>
                                     {{
                                         formatPrice(
@@ -777,9 +893,9 @@ async function submitOrder() {
                                             Number(
                                                 item.price,
                                             ) *
-                                                Number(
-                                                    item.quantity,
-                                                ),
+                                            Number(
+                                                item.quantity,
+                                            ),
                                         )
                                     }}
                                 </strong>
@@ -787,11 +903,92 @@ async function submitOrder() {
                         </article>
                     </div>
                 </section>
-
                 <section class="checkout-card">
-                    <header
-                        class="checkout-card__header"
-                    >
+                    <header class="checkout-card__header">
+                        <div>
+                            <TicketPercent :size="20" />
+
+                            <div>
+                                <h2>
+                                    Mã giảm giá
+                                </h2>
+
+                                <p>
+                                    Nhập voucher của NexaCart
+                                    để nhận ưu đãi.
+                                </p>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div class="voucher-box">
+                        <div class="voucher-input-row">
+                            <input v-model="voucherCode" type="text" maxlength="50" placeholder="Nhập mã voucher"
+                                :disabled="Boolean(
+                                    appliedVoucher
+                                ) ||
+                                    isVoucherLoading
+                                    " @input="
+                                        voucherCode =
+                                        voucherCode
+                                            .toUpperCase()
+                                        " @keyup.enter="
+                                            applyVoucher
+                                        ">
+
+                            <button v-if="
+                                !appliedVoucher
+                            " type="button" :disabled="isVoucherLoading ||
+                                !voucherCode.trim()
+                                " @click="applyVoucher">
+                                {{
+                                    isVoucherLoading
+                                        ? 'Đang kiểm tra...'
+                                        : 'Áp dụng'
+                                }}
+                            </button>
+
+                            <button v-else type="button" class="voucher-remove-button" @click="
+                                removeVoucher
+                            ">
+                                Bỏ mã
+                            </button>
+                        </div>
+
+                        <p v-if="voucherError" class="voucher-message voucher-message--error">
+                            {{ voucherError }}
+                        </p>
+
+                        <div v-if="appliedVoucher" class="voucher-applied">
+                            <div>
+                                <Check :size="16" />
+
+                                <div>
+                                    <strong>
+                                        {{
+                                            appliedVoucher.code
+                                        }}
+                                    </strong>
+
+                                    <span>
+                                        Đã áp dụng voucher
+                                    </span>
+                                </div>
+                            </div>
+
+                            <strong>
+                                -
+                                {{
+                                    formatPrice(
+                                        voucherDiscount,
+                                    )
+                                }}
+                            </strong>
+                        </div>
+                    </div>
+                </section>
+                <section class="checkout-card">
+                    <header class="checkout-card__header">
                         <div>
                             <CreditCard :size="20" />
 
@@ -809,42 +1006,25 @@ async function submitOrder() {
                     </header>
 
                     <div class="payment-methods">
-                        <label
-                            class="payment-method"
-                            :class="{
-                                'payment-method--selected':
-                                    paymentMethod ===
-                                    'cod',
-                            }"
-                        >
-                            <input
-                                v-model="paymentMethod"
-                                type="radio"
-                                value="cod"
-                                name="payment-method"
-                            />
+                        <label class="payment-method" :class="{
+                            'payment-method--selected':
+                                paymentMethod ===
+                                'cod',
+                        }">
+                            <input v-model="paymentMethod" type="radio" value="cod" name="payment-method" />
 
-                            <span
-                                class="payment-method__control"
-                            >
-                                <Check
-                                    v-if="
-                                        paymentMethod ===
-                                        'cod'
-                                    "
-                                    :size="13"
-                                />
+                            <span class="payment-method__control">
+                                <Check v-if="
+                                    paymentMethod ===
+                                    'cod'
+                                " :size="13" />
                             </span>
 
-                            <span
-                                class="payment-method__icon"
-                            >
+                            <span class="payment-method__icon">
                                 <Banknote :size="22" />
                             </span>
 
-                            <span
-                                class="payment-method__content"
-                            >
+                            <span class="payment-method__content">
                                 <strong>
                                     Thanh toán khi nhận hàng
                                 </strong>
@@ -856,22 +1036,14 @@ async function submitOrder() {
                             </span>
                         </label>
 
-                        <div
-                            class="payment-method payment-method--disabled"
-                        >
-                            <span
-                                class="payment-method__control"
-                            />
+                        <div class="payment-method payment-method--disabled">
+                            <span class="payment-method__control" />
 
-                            <span
-                                class="payment-method__icon"
-                            >
+                            <span class="payment-method__icon">
                                 <CreditCard :size="22" />
                             </span>
 
-                            <span
-                                class="payment-method__content"
-                            >
+                            <span class="payment-method__content">
                                 <strong>
                                     Thanh toán trực tuyến
                                 </strong>
@@ -882,9 +1054,7 @@ async function submitOrder() {
                                 </span>
                             </span>
 
-                            <span
-                                class="payment-method__coming"
-                            >
+                            <span class="payment-method__coming">
                                 Sắp có
                             </span>
                         </div>
@@ -892,9 +1062,7 @@ async function submitOrder() {
                 </section>
 
                 <section class="checkout-card">
-                    <header
-                        class="checkout-card__header"
-                    >
+                    <header class="checkout-card__header">
                         <div>
                             <ShoppingBag :size="20" />
 
@@ -912,11 +1080,8 @@ async function submitOrder() {
                     </header>
 
                     <div class="order-note">
-                        <textarea
-                            v-model="orderNote"
-                            maxlength="500"
-                            placeholder="Ví dụ: Giao hàng trong giờ hành chính"
-                        />
+                        <textarea v-model="orderNote" maxlength="500"
+                            placeholder="Ví dụ: Giao hàng trong giờ hành chính" />
 
                         <span>
                             {{ orderNote.length }}/500
@@ -926,9 +1091,7 @@ async function submitOrder() {
             </div>
 
             <aside class="checkout-summary">
-                <div
-                    class="checkout-summary__header"
-                >
+                <div class="checkout-summary__header">
                     <ShoppingBag :size="20" />
 
                     <h2>
@@ -936,10 +1099,7 @@ async function submitOrder() {
                     </h2>
                 </div>
 
-                <div
-                    v-if="selectedAddress"
-                    class="checkout-summary__address"
-                >
+                <div v-if="selectedAddress" class="checkout-summary__address">
                     <span>
                         Giao đến
                     </span>
@@ -947,21 +1107,19 @@ async function submitOrder() {
                     <strong>
                         {{
                             selectedAddress
-                                .recipientName
+                                .recipient_name
                         }}
                     </strong>
 
                     <p>
                         {{
                             selectedAddress
-                                .fullAddress
+                                .full_address
                         }}
                     </p>
                 </div>
 
-                <dl
-                    class="checkout-summary__details"
-                >
+                <dl class="checkout-summary__details">
                     <div>
                         <dt>Sản phẩm đã chọn</dt>
 
@@ -981,15 +1139,33 @@ async function submitOrder() {
                             }}
                         </dd>
                     </div>
+                    <div v-if="
+                        appliedVoucher &&
+                        voucherDiscount > 0
+                    ">
+                        <dt>
+                            Voucher
+                            <span class="voucher-code-inline">
+                                {{
+                                    appliedVoucher.code
+                                }}
+                            </span>
+                        </dt>
 
+                        <dd class="checkout-summary__discount">
+                            -
+                            {{
+                                formatPrice(
+                                    voucherDiscount,
+                                )
+                            }}
+                        </dd>
+                    </div>
                     <div>
                         <dt>Phí vận chuyển</dt>
 
                         <dd>
-                            <span
-                                v-if="shippingFee === 0"
-                                class="checkout-summary__free"
-                            >
+                            <span v-if="shippingFee === 0" class="checkout-summary__free">
                                 Miễn phí
                             </span>
 
@@ -1009,11 +1185,9 @@ async function submitOrder() {
                     sẽ được backend kiểm tra lại từ database.
                 </p>
 
-                <div
-                    class="checkout-summary__total"
-                >
+                <div class="checkout-summary__total">
                     <span>
-                        Tổng tạm tính
+                        Tổng thanh toán
                     </span>
 
                     <strong>
@@ -1025,11 +1199,7 @@ async function submitOrder() {
                     </strong>
                 </div>
 
-                <div
-                    v-if="submitError"
-                    class="checkout-error"
-                    role="alert"
-                >
+                <div v-if="submitError" class="checkout-error" role="alert">
                     <CircleAlert :size="18" />
 
                     <span>
@@ -1037,25 +1207,15 @@ async function submitOrder() {
                     </span>
                 </div>
 
-                <button
-                    type="button"
-                    class="place-order-button"
-                    :disabled="!canSubmit"
-                    @click="submitOrder"
-                >
-                    <span
-                        v-if="isSubmitting"
-                        class="place-order-button__spinner"
-                    />
+                <button type="button" class="place-order-button" :disabled="!canSubmit" @click="submitOrder">
+                    <span v-if="isSubmitting" class="place-order-button__spinner" />
 
                     <template v-else>
                         Đặt hàng
                     </template>
                 </button>
 
-                <p
-                    class="checkout-summary__agreement"
-                >
+                <p class="checkout-summary__agreement">
                     Bằng việc đặt hàng, bạn đồng ý
                     với điều khoản sử dụng và chính
                     sách mua hàng của NexaCart.
@@ -1091,17 +1251,38 @@ async function submitOrder() {
     gap: 28px;
 }
 
+/* =========================
+   BREADCRUMB
+========================= */
+
 .breadcrumb {
     display: flex;
     align-items: center;
     gap: 7px;
+    overflow: hidden;
     color: var(--color-text-muted);
     font-size: 12px;
+    white-space: nowrap;
+}
+
+.breadcrumb a {
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    transition: color var(--transition-fast);
 }
 
 .breadcrumb a:hover {
     color: var(--color-primary-700);
 }
+
+.breadcrumb > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* =========================
+   HEADER
+========================= */
 
 .checkout-header {
     display: flex;
@@ -1113,7 +1294,7 @@ async function submitOrder() {
 }
 
 .checkout-header__eyebrow {
-    margin-bottom: 9px;
+    margin: 0 0 9px;
     color: var(--color-primary-700);
     font-size: 11px;
     font-weight: 700;
@@ -1122,47 +1303,69 @@ async function submitOrder() {
 }
 
 .checkout-header h1 {
+    margin: 0;
+    color: var(--color-text-primary);
     font-size: 36px;
+    line-height: 1.15;
 }
 
 .checkout-header p {
     max-width: 650px;
-    margin-top: 10px;
+    margin: 10px 0 0;
+    color: var(--color-text-muted);
     font-size: 14px;
+    line-height: 1.6;
 }
 
 .checkout-header__back {
     display: inline-flex;
+    min-height: 42px;
     flex-shrink: 0;
     align-items: center;
+    justify-content: center;
     gap: 8px;
-    min-height: 42px;
-    padding-inline: 14px;
+    padding: 0 14px;
     color: var(--color-text-secondary);
     background: var(--color-white);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     font-size: 12px;
     font-weight: 600;
+    text-decoration: none;
+    transition:
+        color var(--transition-fast),
+        border-color var(--transition-fast),
+        background-color var(--transition-fast);
 }
 
 .checkout-header__back:hover {
     color: var(--color-primary-700);
+    background: var(--color-primary-50);
     border-color: var(--color-primary-200);
 }
+
+/* =========================
+   MAIN LAYOUT
+========================= */
 
 .checkout-layout {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr) 360px;
+        minmax(0, 1fr)
+        360px;
     gap: 28px;
     align-items: start;
 }
 
 .checkout-content {
     display: grid;
+    min-width: 0;
     gap: 20px;
 }
+
+/* =========================
+   COMMON CARD
+========================= */
 
 .checkout-card {
     overflow: hidden;
@@ -1173,16 +1376,17 @@ async function submitOrder() {
 
 .checkout-card__header {
     display: flex;
+    min-height: 74px;
     align-items: center;
     justify-content: space-between;
     gap: 18px;
-    min-height: 74px;
     padding: 16px 20px;
     border-bottom: 1px solid var(--color-border);
 }
 
 .checkout-card__header > div {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: 12px;
 }
@@ -1193,33 +1397,59 @@ async function submitOrder() {
 }
 
 .checkout-card__header h2 {
+    margin: 0;
+    color: var(--color-text-primary);
     font-size: 16px;
+    line-height: 1.3;
 }
 
 .checkout-card__header p {
-    margin-top: 4px;
+    margin: 4px 0 0;
+    color: var(--color-text-muted);
     font-size: 11px;
+    line-height: 1.5;
 }
 
 .checkout-card__action,
 .checkout-card__link {
     display: inline-flex;
+    min-height: 34px;
     flex-shrink: 0;
     align-items: center;
+    justify-content: center;
     gap: 7px;
+    padding: 0 8px;
     color: var(--color-primary-700);
     background: transparent;
     border: 0;
+    font: inherit;
     font-size: 12px;
     font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
 }
+
+.checkout-card__action:hover,
+.checkout-card__link:hover {
+    color: var(--color-primary-800);
+    background: var(--color-primary-50);
+}
+
+/* =========================
+   ADDRESS
+========================= */
 
 .address-list {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr));
     gap: 14px;
     padding: 20px;
 }
+
+/* =========================
+   PRODUCTS
+========================= */
 
 .checkout-products {
     display: grid;
@@ -1228,7 +1458,9 @@ async function submitOrder() {
 .checkout-product {
     display: grid;
     grid-template-columns:
-        82px minmax(0, 1fr) auto;
+        82px
+        minmax(0, 1fr)
+        auto;
     gap: 16px;
     align-items: center;
     padding: 18px 20px;
@@ -1240,9 +1472,12 @@ async function submitOrder() {
 }
 
 .checkout-product__image {
+    display: block;
     overflow: hidden;
+    width: 82px;
     aspect-ratio: 1 / 1;
     background: var(--color-gray-100);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
 }
 
@@ -1250,24 +1485,38 @@ async function submitOrder() {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform var(--transition-fast);
+}
+
+.checkout-product__image:hover img {
+    transform: scale(1.035);
 }
 
 .checkout-product__information {
     display: grid;
-    gap: 5px;
     min-width: 0;
+    gap: 5px;
 }
 
 .checkout-product__seller {
+    margin: 0;
+    overflow: hidden;
     color: var(--color-text-muted);
     font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .checkout-product__name {
+    display: -webkit-box;
+    overflow: hidden;
     color: var(--color-text-primary);
     font-size: 13px;
     font-weight: 600;
     line-height: 1.5;
+    text-decoration: none;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .checkout-product__name:hover {
@@ -1281,8 +1530,8 @@ async function submitOrder() {
 
 .checkout-product__price {
     display: grid;
-    gap: 5px;
     min-width: 120px;
+    gap: 5px;
     text-align: right;
 }
 
@@ -1296,6 +1545,183 @@ async function submitOrder() {
     font-size: 13px;
 }
 
+/* =========================
+   VOUCHER
+========================= */
+
+.voucher-box {
+    padding: 20px;
+}
+
+.voucher-input-row {
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1fr)
+        110px;
+    gap: 10px;
+}
+
+.voucher-input-row input {
+    width: 100%;
+    height: 42px;
+    box-sizing: border-box;
+    padding: 0 13px;
+    color: var(--color-text-primary);
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    outline: none;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    transition:
+        border-color var(--transition-fast),
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+}
+
+.voucher-input-row input::placeholder {
+    color: var(--color-text-muted);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.voucher-input-row input:focus {
+    border-color: var(--color-primary-500);
+    background: var(--color-white);
+    box-shadow:
+        0 0 0 3px
+        rgb(36 115 74 / 10%);
+}
+
+.voucher-input-row input:disabled {
+    cursor: not-allowed;
+    color: var(--color-text-muted);
+    background: var(--color-gray-50);
+}
+
+.voucher-input-row > button {
+    display: inline-flex;
+    min-width: 110px;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 15px;
+    color: var(--color-white);
+    background: var(--color-primary-700);
+    border: 1px solid var(--color-primary-700);
+    border-radius: var(--radius-md);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.voucher-input-row
+> button:hover:not(:disabled) {
+    background: var(--color-primary-800);
+    border-color: var(--color-primary-800);
+}
+
+.voucher-input-row > button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.voucher-input-row
+> .voucher-remove-button {
+    color: var(--color-danger);
+    background: var(--color-white);
+    border-color: #e2b9b9;
+}
+
+.voucher-input-row
+> .voucher-remove-button:hover:not(:disabled) {
+    color: #8d3030;
+    background: #fff4f4;
+    border-color: #d49a9a;
+}
+
+.voucher-message {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.voucher-message--error {
+    color: var(--color-danger);
+}
+
+.voucher-applied {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 12px;
+    padding: 13px 14px;
+    color: var(--color-primary-700);
+    background: var(--color-primary-50);
+    border: 1px solid var(--color-primary-200);
+    border-radius: var(--radius-md);
+}
+
+.voucher-applied > div {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+}
+
+.voucher-applied > div > svg {
+    flex: 0 0 auto;
+}
+
+.voucher-applied > div > div {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.voucher-applied
+> div
+> div
+> strong {
+    overflow: hidden;
+    color: var(--color-primary-700);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.voucher-applied
+> div
+> div
+> span {
+    color: var(--color-text-muted);
+    font-size: 10px;
+}
+
+.voucher-applied
+> strong {
+    flex: 0 0 auto;
+    color: var(--color-success);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* =========================
+   PAYMENT METHOD
+========================= */
+
 .payment-methods {
     display: grid;
     gap: 12px;
@@ -1303,19 +1729,30 @@ async function submitOrder() {
 }
 
 .payment-method {
+    position: relative;
     display: grid;
     grid-template-columns:
-        auto auto minmax(0, 1fr) auto;
+        auto
+        auto
+        minmax(0, 1fr)
+        auto;
     gap: 13px;
-    align-items: center;
     min-height: 78px;
+    align-items: center;
     padding: 15px;
     cursor: pointer;
+    background: var(--color-white);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     transition:
         border-color var(--transition-fast),
         background-color var(--transition-fast);
+}
+
+.payment-method:hover:not(
+    .payment-method--disabled
+) {
+    border-color: var(--color-primary-200);
 }
 
 .payment-method > input {
@@ -1336,25 +1773,27 @@ async function submitOrder() {
 
 .payment-method__control {
     display: grid;
-    place-items: center;
     width: 19px;
     height: 19px;
+    place-items: center;
     color: var(--color-white);
     background: var(--color-white);
     border: 1px solid var(--color-border-strong);
     border-radius: 50%;
 }
 
-.payment-method--selected .payment-method__control {
+.payment-method--selected
+.payment-method__control {
     background: var(--color-primary-700);
     border-color: var(--color-primary-700);
 }
 
 .payment-method__icon {
     display: grid;
-    place-items: center;
     width: 42px;
     height: 42px;
+    flex-shrink: 0;
+    place-items: center;
     color: var(--color-primary-700);
     background: var(--color-primary-100);
     border-radius: var(--radius-md);
@@ -1362,16 +1801,19 @@ async function submitOrder() {
 
 .payment-method__content {
     display: grid;
+    min-width: 0;
     gap: 5px;
 }
 
 .payment-method__content strong {
+    color: var(--color-text-primary);
     font-size: 13px;
 }
 
 .payment-method__content span {
     color: var(--color-text-muted);
     font-size: 11px;
+    line-height: 1.5;
 }
 
 .payment-method__coming {
@@ -1381,7 +1823,12 @@ async function submitOrder() {
     border-radius: var(--radius-pill);
     font-size: 10px;
     font-weight: 600;
+    white-space: nowrap;
 }
+
+/* =========================
+   ORDER NOTE
+========================= */
 
 .order-note {
     position: relative;
@@ -1391,23 +1838,33 @@ async function submitOrder() {
 .order-note textarea {
     width: 100%;
     min-height: 118px;
-    padding: 14px;
+    box-sizing: border-box;
+    padding: 14px 14px 30px;
     resize: vertical;
     color: var(--color-text-primary);
     background: var(--color-gray-50);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
+    outline: none;
     font: inherit;
     font-size: 13px;
     line-height: 1.6;
-    outline: none;
+    transition:
+        border-color var(--transition-fast),
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+}
+
+.order-note textarea::placeholder {
+    color: var(--color-text-muted);
 }
 
 .order-note textarea:focus {
     background: var(--color-white);
     border-color: var(--color-primary-500);
     box-shadow:
-        0 0 0 4px rgb(113 56 214 / 10%);
+        0 0 0 4px
+        rgb(36 115 74 / 10%);
 }
 
 .order-note > span {
@@ -1417,6 +1874,10 @@ async function submitOrder() {
     color: var(--color-text-muted);
     font-size: 10px;
 }
+
+/* =========================
+   CHECKOUT SUMMARY
+========================= */
 
 .checkout-summary {
     position: sticky;
@@ -1429,18 +1890,21 @@ async function submitOrder() {
 
 .checkout-summary__header {
     display: flex;
+    min-height: 64px;
     align-items: center;
     gap: 9px;
-    min-height: 64px;
-    padding-inline: 20px;
+    padding: 0 20px;
     border-bottom: 1px solid var(--color-border);
 }
 
 .checkout-summary__header svg {
+    flex-shrink: 0;
     color: var(--color-primary-700);
 }
 
 .checkout-summary__header h2 {
+    margin: 0;
+    color: var(--color-text-primary);
     font-size: 16px;
 }
 
@@ -1457,13 +1921,17 @@ async function submitOrder() {
 .checkout-summary__address > span {
     color: var(--color-text-muted);
     font-size: 10px;
+    text-transform: uppercase;
 }
 
 .checkout-summary__address strong {
+    color: var(--color-text-primary);
     font-size: 12px;
 }
 
 .checkout-summary__address p {
+    margin: 0;
+    color: var(--color-text-secondary);
     font-size: 11px;
     line-height: 1.55;
 }
@@ -1492,10 +1960,28 @@ async function submitOrder() {
     color: var(--color-text-primary);
     font-size: 12px;
     font-weight: 600;
+    text-align: right;
 }
 
 .checkout-summary__free {
     color: var(--color-success) !important;
+}
+
+.checkout-summary__discount {
+    color: var(--color-success) !important;
+}
+
+.voucher-code-inline {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 2px 5px;
+    color: var(--color-primary-700);
+    background: var(--color-primary-50);
+    border: 1px solid var(--color-primary-200);
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.3;
 }
 
 .checkout-summary__notice {
@@ -1519,6 +2005,7 @@ async function submitOrder() {
 }
 
 .checkout-summary__total span {
+    color: var(--color-text-primary);
     font-size: 13px;
     font-weight: 600;
 }
@@ -1526,39 +2013,62 @@ async function submitOrder() {
 .checkout-summary__total strong {
     color: var(--color-primary-700);
     font-size: 22px;
+    line-height: 1;
+    text-align: right;
 }
+
+/* =========================
+   CHECKOUT ERROR
+========================= */
 
 .checkout-error {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns:
+        auto minmax(0, 1fr);
     gap: 9px;
     margin: 0 20px 16px;
     padding: 12px;
     color: var(--color-danger);
-    background: #fff1f3;
-    border: 1px solid #ffd6dc;
+    background: #fff4f4;
+    border: 1px solid #f0c5c5;
     border-radius: var(--radius-md);
     font-size: 11px;
     line-height: 1.5;
 }
 
+.checkout-error svg {
+    flex-shrink: 0;
+}
+
+/* =========================
+   PLACE ORDER BUTTON
+========================= */
+
 .place-order-button {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: calc(100% - 40px);
     min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     margin: 0 20px;
     color: var(--color-white);
     background: var(--color-primary-700);
-    border: 0;
+    border: 1px solid var(--color-primary-700);
     border-radius: var(--radius-md);
+    font: inherit;
     font-size: 13px;
     font-weight: 700;
+    cursor: pointer;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        opacity var(--transition-fast);
 }
 
 .place-order-button:hover:not(:disabled) {
     background: var(--color-primary-800);
+    border-color: var(--color-primary-800);
 }
 
 .place-order-button:disabled {
@@ -1569,11 +2079,15 @@ async function submitOrder() {
 .place-order-button__spinner {
     width: 18px;
     height: 18px;
-    border: 2px solid rgb(255 255 255 / 35%);
+    border: 2px solid
+        rgb(255 255 255 / 35%);
     border-top-color: var(--color-white);
     border-radius: 50%;
     animation:
-        checkout-spin 700ms linear infinite;
+        checkout-spin
+        700ms
+        linear
+        infinite;
 }
 
 .checkout-summary__agreement {
@@ -1583,6 +2097,10 @@ async function submitOrder() {
     line-height: 1.55;
     text-align: center;
 }
+
+/* =========================
+   CHECKOUT BENEFITS
+========================= */
 
 .checkout-benefits {
     display: grid;
@@ -1596,6 +2114,7 @@ async function submitOrder() {
     gap: 9px;
     color: var(--color-text-muted);
     font-size: 11px;
+    line-height: 1.45;
 }
 
 .checkout-benefits svg {
@@ -1603,10 +2122,14 @@ async function submitOrder() {
     color: var(--color-primary-700);
 }
 
+/* =========================
+   EMPTY CHECKOUT
+========================= */
+
 .empty-checkout {
     display: grid;
-    place-items: center;
     min-height: 450px;
+    place-items: center;
     padding: 40px;
     text-align: center;
     background: var(--color-white);
@@ -1616,9 +2139,9 @@ async function submitOrder() {
 
 .empty-checkout__icon {
     display: grid;
-    place-items: center;
     width: 68px;
     height: 68px;
+    place-items: center;
     margin-bottom: 20px;
     color: var(--color-primary-700);
     background: var(--color-primary-50);
@@ -1626,31 +2149,52 @@ async function submitOrder() {
 }
 
 .empty-checkout h2 {
+    margin: 0;
+    color: var(--color-text-primary);
     font-size: 22px;
 }
 
 .empty-checkout p {
     max-width: 460px;
-    margin-top: 10px;
+    margin: 10px 0 0;
+    color: var(--color-text-muted);
     line-height: 1.7;
 }
 
 .empty-checkout__button {
+    display: inline-flex;
     min-height: 44px;
+    align-items: center;
+    justify-content: center;
     margin-top: 22px;
-    padding: 12px 18px;
+    padding: 0 18px;
     color: var(--color-white);
     background: var(--color-primary-700);
     border-radius: var(--radius-md);
     font-size: 13px;
     font-weight: 600;
+    text-decoration: none;
+    transition:
+        background-color var(--transition-fast);
 }
+
+.empty-checkout__button:hover {
+    background: var(--color-primary-800);
+}
+
+/* =========================
+   ANIMATION
+========================= */
 
 @keyframes checkout-spin {
     to {
         transform: rotate(360deg);
     }
 }
+
+/* =========================
+   TABLET
+========================= */
 
 @media (max-width: 1080px) {
     .checkout-layout {
@@ -1662,30 +2206,88 @@ async function submitOrder() {
     }
 }
 
+/* =========================
+   SMALL TABLET
+========================= */
+
 @media (max-width: 720px) {
+    .checkout-page {
+        gap: 22px;
+    }
+
     .checkout-header {
         align-items: flex-start;
         flex-direction: column;
+        gap: 18px;
+        padding-bottom: 22px;
+    }
+
+    .checkout-header__back {
+        align-self: flex-start;
     }
 
     .address-list {
         grid-template-columns: 1fr;
     }
+
+    .checkout-summary {
+        width: 100%;
+    }
 }
 
+/* =========================
+   MOBILE
+========================= */
+
 @media (max-width: 560px) {
+    .checkout-page {
+        gap: 18px;
+    }
+
+    .breadcrumb {
+        font-size: 11px;
+    }
+
     .checkout-header h1 {
-        font-size: 31px;
+        font-size: 30px;
+    }
+
+    .checkout-header p {
+        font-size: 12px;
     }
 
     .checkout-card__header {
+        min-height: auto;
         align-items: flex-start;
         flex-direction: column;
+        gap: 12px;
+        padding: 15px;
+    }
+
+    .checkout-card__header > div {
+        align-items: flex-start;
+    }
+
+    .checkout-card__action,
+    .checkout-card__link {
+        padding-left: 0;
+    }
+
+    .address-list {
+        gap: 10px;
+        padding: 15px;
     }
 
     .checkout-product {
         grid-template-columns:
-            72px minmax(0, 1fr);
+            72px
+            minmax(0, 1fr);
+        gap: 12px;
+        padding: 15px;
+    }
+
+    .checkout-product__image {
+        width: 72px;
     }
 
     .checkout-product__price {
@@ -1694,9 +2296,38 @@ async function submitOrder() {
         text-align: left;
     }
 
+    .voucher-box {
+        padding: 15px;
+    }
+
+    .voucher-input-row {
+        grid-template-columns: 1fr;
+    }
+
+    .voucher-input-row > button {
+        width: 100%;
+    }
+
+    .voucher-applied {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .voucher-applied > strong {
+        padding-left: 26px;
+    }
+
+    .payment-methods {
+        padding: 15px;
+    }
+
     .payment-method {
         grid-template-columns:
-            auto auto minmax(0, 1fr);
+            auto
+            auto
+            minmax(0, 1fr);
+        padding: 13px;
     }
 
     .payment-method__coming {
@@ -1704,9 +2335,76 @@ async function submitOrder() {
         width: fit-content;
     }
 
+    .order-note {
+        padding: 15px;
+    }
+
+    .order-note > span {
+        right: 28px;
+        bottom: 26px;
+    }
+
+    .checkout-summary__address {
+        margin: 15px;
+    }
+
+    .checkout-summary__details {
+        padding:
+            2px
+            15px
+            15px;
+    }
+
+    .checkout-summary__notice {
+        margin:
+            0
+            15px
+            15px;
+    }
+
     .checkout-summary__total {
         align-items: flex-start;
         flex-direction: column;
+        padding: 15px;
+    }
+
+    .checkout-summary__total strong {
+        font-size: 21px;
+        text-align: left;
+    }
+
+    .checkout-error {
+        margin:
+            0
+            15px
+            15px;
+    }
+
+    .place-order-button {
+        width: calc(100% - 30px);
+        margin:
+            0
+            15px;
+    }
+
+    .checkout-summary__agreement {
+        margin:
+            14px
+            15px
+            0;
+    }
+
+    .checkout-benefits {
+        padding: 15px;
+    }
+
+    .empty-checkout {
+        min-height: 360px;
+        padding: 30px 18px;
+    }
+
+    .empty-checkout h2 {
+        font-size: 19px;
     }
 }
 </style>

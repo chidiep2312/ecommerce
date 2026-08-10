@@ -29,40 +29,27 @@ function formatPrice(value) {
 <template>
     <article class="product-card">
         <div class="product-card__media">
-            <RouterLink
-                :to="{
-                    name: 'product-detail',
-                    params: {
-                        slug: product.slug,
-                    },
-                }"
-                class="product-card__image-link"
-            >
-                <img
-                    :src="product.image"
-                    :alt="product.name"
-                    class="product-card__image"
-                />
+            <RouterLink :to="{
+                name: 'product-detail',
+                params: {
+                    slug: product.slug,
+                },
+            }" class="product-card__image-link">
+                <img :src="product.image" :alt="product.name" class="product-card__image" />
             </RouterLink>
 
-            <span
-                v-if="product.badge"
-                class="product-card__badge"
-            >
+            <span v-if="product.badge" class="product-card__badge">
                 {{ product.badge }}
             </span>
 
-            <button
-                type="button"
-                class="product-card__wishlist"
-                :aria-label="
-                    `Thêm ${product.name} vào yêu thích`
-                "
-                @click="
+            <button type="button" class="product-card__wishlist" :aria-label="`Thêm ${product.name} vào yêu thích`
+                " @click="
                     emit('toggle-wishlist', product)
-                "
-            >
-                <Heart :size="18" />
+                    ">
+                <Heart :size="19" :fill="product.is_wishlisted
+                        ? 'currentColor'
+                        : 'none'
+                    " />
             </button>
         </div>
 
@@ -71,23 +58,17 @@ function formatPrice(value) {
                 {{ product.category }}
             </p>
 
-            <RouterLink
-                :to="{
-                    name: 'product-detail',
-                    params: {
-                        slug: product.slug,
-                    },
-                }"
-                class="product-card__name"
-            >
+            <RouterLink :to="{
+                name: 'product-detail',
+                params: {
+                    slug: product.slug,
+                },
+            }" class="product-card__name">
                 {{ product.name }}
             </RouterLink>
 
             <div class="product-card__rating">
-                <Star
-                    :size="15"
-                    fill="currentColor"
-                />
+                <Star :size="15" fill="currentColor" />
 
                 <span>
                     {{ product.rating }}
@@ -104,10 +85,7 @@ function formatPrice(value) {
                         {{ formatPrice(product.price) }}
                     </span>
 
-                    <span
-                        v-if="product.originalPrice"
-                        class="product-card__original-price"
-                    >
+                    <span v-if="product.originalPrice" class="product-card__original-price">
                         {{
                             formatPrice(
                                 product.originalPrice,
@@ -116,16 +94,10 @@ function formatPrice(value) {
                     </span>
                 </div>
 
-                <button
-                    type="button"
-                    class="product-card__cart"
-                    :aria-label="
-                        `Thêm ${product.name} vào giỏ hàng`
-                    "
-                    @click="
+                <button type="button" class="product-card__cart" :aria-label="`Thêm ${product.name} vào giỏ hàng`
+                    " @click="
                         emit('add-to-cart', product)
-                    "
-                >
+                        ">
                     <ShoppingBag :size="18" />
                 </button>
             </div>

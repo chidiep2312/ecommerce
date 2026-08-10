@@ -470,6 +470,12 @@ class ProductService
     ): void {
         $this->productRepository->delete($product);
     }
+    
+    public function getProduct($data){
+       return $this->productRepository
+            ->getProductBySlug($data);
+    }
+
 
     private function generateUniqueSlug(
         string $name,

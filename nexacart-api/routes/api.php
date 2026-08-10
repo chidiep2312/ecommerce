@@ -21,6 +21,13 @@ use App\Http\Controllers\Api\V1\SellerRequestController;
 use App\Http\Controllers\Api\V1\AdminSellerController;
 use App\Http\Controllers\Api\V1\SellerInventoryController;
 use App\Http\Controllers\Api\V1\SellerVoucherUsageController;
+use App\Http\Controllers\Api\V1\CustomerDashboardController;
+use App\Http\Controllers\Api\V1\AddressController;
+use App\Http\Controllers\Api\V1\WishlistController;
+use App\Http\Controllers\Api\V1\ShopController;
+
+
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -54,7 +61,29 @@ Route::prefix('v1')->group(function () {
         [ReviewController::class, 'index']
     );
 
-     
+    Route::get(
+        '/shops/{slug}',
+        [
+            ShopController::class,
+            'show',
+        ]
+    );
+
+    Route::get(
+        '/shops/{slug}/products',
+        [
+            ShopController::class,
+            'products',
+        ]
+    );
+
+    Route::get(
+        '/products/{product:slug}/reviews',
+        [
+            ReviewController::class,
+            'index',
+        ]
+    );
     /*
     |--------------------------------------------------------------------------
     | Public authentication routes
@@ -87,7 +116,7 @@ Route::prefix('v1')->group(function () {
 
     Route::get('/products/{product:slug}', [
         ProductController::class,
-        'show',
+        'getProduct',
     ]);
     Route::get('/categories', [
         CategoryController::class,
@@ -191,18 +220,116 @@ Route::prefix('v1')->group(function () {
             '/products',
             [ProductController::class, 'index']
         );
+        Route::get(
+            '/product/{slug}',
+            [ProductController::class, 'getProduct']
+        );
+
+        Route::get(
+            '/orders/{order}/items/{orderItem}/review',
+            [
+                ReviewController::class,
+                'createContext',
+            ]
+        );
+
+        Route::post(
+            '/orders/{order}/items/{orderItem}/review',
+            [
+                ReviewController::class,
+                'store',
+            ]
+        );
 
         Route::patch(
             '/reviews/{review}',
-            [ReviewController::class, 'update']
+            [
+                ReviewController::class,
+                'update',
+            ]
         );
 
         Route::delete(
             '/reviews/{review}',
-            [ReviewController::class, 'destroy']
+            [
+                ReviewController::class,
+                'destroy',
+            ]
+        );
+        Route::get(
+            '/dashboard',
+            CustomerDashboardController::class
         );
 
-      
+        Route::get(
+            '/addresses',
+            [
+                AddressController::class,
+                'index',
+            ]
+        );
+
+        Route::post(
+            '/addresses',
+            [
+                AddressController::class,
+                'store',
+            ]
+        );
+
+        Route::put(
+            '/addresses/{address}',
+            [
+                AddressController::class,
+                'update',
+            ]
+        );
+
+        Route::patch(
+            '/addresses/{address}/default',
+            [
+                AddressController::class,
+                'setDefault',
+            ]
+        );
+
+        Route::delete(
+            '/addresses/{address}',
+            [
+                AddressController::class,
+                'destroy',
+            ]
+        );
+        Route::patch(
+            '/profile',
+            [
+                AuthController::class,
+                'updateProfile',
+            ]
+        );
+        Route::get(
+            '/wishlist',
+            [
+                WishlistController::class,
+                'index',
+            ]
+        );
+
+        Route::post(
+            '/wishlist/{product}',
+            [
+                WishlistController::class,
+                'store',
+            ]
+        );
+
+        Route::delete(
+            '/wishlist/{product}',
+            [
+                WishlistController::class,
+                'destroy',
+            ]
+        );
     });
 
 
@@ -300,6 +427,21 @@ Route::prefix('v1')->group(function () {
             [
                 SellerVoucherUsageController::class,
                 'index',
+            ]
+        );
+        Route::get(
+            '/shop/profile',
+            [
+                ShopController::class,
+                'profile',
+            ]
+        );
+
+        Route::patch(
+            '/shop/profile',
+            [
+                ShopController::class,
+                'updateProfile',
             ]
         );
     });

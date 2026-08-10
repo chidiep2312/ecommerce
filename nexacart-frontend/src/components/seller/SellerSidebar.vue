@@ -72,7 +72,7 @@ const managementItems = [
 const accountItems = [
     {
         label: 'Hồ sơ cửa hàng',
-     //   routeName: 'seller-profile',
+        routeName: 'seller-profile',
         icon: 'profile',
     },
     {

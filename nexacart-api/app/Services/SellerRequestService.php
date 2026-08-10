@@ -3,24 +3,22 @@
 namespace App\Services;
 
 use App\Enums\SellerRequestStatus;
+use App\Enums\ShopStatus;
 use App\Enums\UserRole;
 use App\Models\SellerRequest;
+use App\Models\Shop;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class SellerRequestService
 {
-    /**
-     * Customer gửi yêu cầu trở thành seller.
-     */
     public function submit(
         User $user,
         ?string $reason = null
     ): SellerRequest {
-        /*
-         * Người đã là seller thì không được gửi yêu cầu mới.
-         */
+       
         if ($user->isSeller()) {
             throw ValidationException::withMessages([
                 'seller_request' =>
@@ -28,9 +26,6 @@ class SellerRequestService
             ]);
         }
 
-        /*
-         * Admin cũng không cần đăng ký seller.
-         */
         if ($user->isAdmin()) {
             throw ValidationException::withMessages([
                 'seller_request' =>
@@ -38,9 +33,7 @@ class SellerRequestService
             ]);
         }
 
-        /*
-         * Không cho phép có hai yêu cầu pending cùng lúc.
-         */
+        
         $hasPendingRequest = $user
             ->sellerRequests()
             ->where(
@@ -56,22 +49,17 @@ class SellerRequestService
             ]);
         }
 
-        /*
-         * Tạo request thông qua relationship.
-         * Laravel tự gán user_id bằng id của $user.
-         */
         return $user
             ->sellerRequests()
             ->create([
                 'status' =>
                     SellerRequestStatus::Pending,
-                'reason' => $reason,
+
+                'reason' =>
+                    $reason,
             ]);
     }
 
-    /**
-     * Admin duyệt yêu cầu.
-     */
     public function approve(
         SellerRequest $sellerRequest,
         User $reviewer
@@ -81,15 +69,16 @@ class SellerRequestService
                 $sellerRequest,
                 $reviewer
             ) {
-                /*
-                 * Khóa dòng dữ liệu để tránh hai admin
-                 * cùng xử lý một request tại một thời điểm.
-                 */
-                $lockedRequest = SellerRequest::query()
-                    ->with('user')
-                    ->lockForUpdate()
-                    ->findOrFail($sellerRequest->id);
+                
+                $lockedRequest =
+                    SellerRequest::query()
+                        ->whereKey(
+                            $sellerRequest->id
+                        )
+                        ->lockForUpdate()
+                        ->firstOrFail();
 
+               
                 if (
                     $lockedRequest->status !==
                     SellerRequestStatus::Pending
@@ -100,15 +89,14 @@ class SellerRequestService
                     ]);
                 }
 
+               
                 $user = User::query()
-                    ->lockForUpdate()
-                    ->findOrFail(
+                    ->whereKey(
                         $lockedRequest->user_id
-                    );
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-                /*
-                 * Nếu tài khoản đã là seller thì không xử lý lại.
-                 */
                 if ($user->isSeller()) {
                     throw ValidationException::withMessages([
                         'seller_request' =>
@@ -116,35 +104,56 @@ class SellerRequestService
                     ]);
                 }
 
-                /*
-                 * Cập nhật trạng thái request.
-                 */
+             
                 $lockedRequest->update([
                     'status' =>
                         SellerRequestStatus::Approved,
-                    'reviewed_by' => $reviewer->id,
-                    'reviewed_at' => now(),
-                    'rejection_reason' => null,
+
+                    'reviewed_by' =>
+                        $reviewer->id,
+
+                    'reviewed_at' =>
+                        now(),
+
+                    'rejection_reason' =>
+                        null,
                 ]);
 
-                /*
-                 * Nâng role customer thành seller.
-                 */
+             
                 $user->update([
-                    'role' => UserRole::Seller,
+                    'role' =>
+                        UserRole::Seller,
                 ]);
 
-                return $lockedRequest->fresh([
-                    'user',
-                    'reviewer',
-                ]);
-            }
+              
+                $user->shop()
+                    ->firstOrCreate(
+                        [],
+                        [
+                            'name' =>
+                                $user->name,
+
+                            'slug' =>
+                                $this
+                                    ->generateShopSlug(
+                                        $user->name
+                                    ),
+
+                            'status' =>
+                                ShopStatus::Active,
+                        ]
+                    );
+
+                return $lockedRequest
+                    ->fresh([
+                        'user',
+                        'reviewer',
+                    ]);
+            },
+            3
         );
     }
 
-    /**
-     * Admin từ chối yêu cầu.
-     */
     public function reject(
         SellerRequest $sellerRequest,
         User $reviewer,
@@ -156,9 +165,13 @@ class SellerRequestService
                 $reviewer,
                 $rejectionReason
             ) {
-                $lockedRequest = SellerRequest::query()
-                    ->lockForUpdate()
-                    ->findOrFail($sellerRequest->id);
+                $lockedRequest =
+                    SellerRequest::query()
+                        ->whereKey(
+                            $sellerRequest->id
+                        )
+                        ->lockForUpdate()
+                        ->firstOrFail();
 
                 if (
                     $lockedRequest->status !==
@@ -173,21 +186,62 @@ class SellerRequestService
                 $lockedRequest->update([
                     'status' =>
                         SellerRequestStatus::Rejected,
+
                     'rejection_reason' =>
                         $rejectionReason,
-                    'reviewed_by' => $reviewer->id,
-                    'reviewed_at' => now(),
+
+                    'reviewed_by' =>
+                        $reviewer->id,
+
+                    'reviewed_at' =>
+                        now(),
                 ]);
 
-                /*
-                 * Không thay đổi role.
-                 * User vẫn giữ role Customer.
-                 */
-                return $lockedRequest->fresh([
-                    'user',
-                    'reviewer',
-                ]);
-            }
+                return $lockedRequest
+                    ->fresh([
+                        'user',
+                        'reviewer',
+                    ]);
+            },
+            3
         );
+    }
+
+    private function generateShopSlug(
+        string $name
+    ): string {
+        $baseSlug = Str::slug(
+            $name
+        );
+
+        /*
+         * Trường hợp tên toàn ký tự đặc biệt
+         * khiến Str::slug() trả chuỗi rỗng.
+         */
+        if ($baseSlug === '') {
+            $baseSlug = 'shop';
+        }
+
+        $slug = $baseSlug;
+
+        $counter = 1;
+
+        while (
+            Shop::query()
+                ->where(
+                    'slug',
+                    $slug
+                )
+                ->exists()
+        ) {
+            $slug =
+                $baseSlug .
+                '-' .
+                $counter;
+
+            $counter++;
+        }
+
+        return $slug;
     }
 }

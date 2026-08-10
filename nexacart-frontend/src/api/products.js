@@ -8,9 +8,16 @@ export function getProducts(params = {}) {
         },
     )
 }
-
-export function getProductBySlug(slug) {
+export function getProduct(slug) {
+    
     return http.get(
-        `/products/${slug}`,
+           `/products/${slug}`,
+       
     )
+    
 }
+// export function getProductBySlug(slug) {
+//     return http.get(
+//         `/products/${slug}`,
+//     )
+// }

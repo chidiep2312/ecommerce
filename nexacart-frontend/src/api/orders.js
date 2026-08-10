@@ -15,3 +15,11 @@ export function getCustomerOrders(params = {}) {
 export function getCustomerOrder(orderId) {
     return http.get(`/customer/orders/${orderId}`)
 }
+
+export function cancelCustomerOrder(
+    orderId,
+) {
+    return http.patch(
+        `/customer/orders/${orderId}/cancel`,
+    )
+}

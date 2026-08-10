@@ -188,4 +188,14 @@ class ProductController extends Controller
             message: 'Mở khóa sản phẩm thành công.'
         );
     }
+    public function getProduct(
+        string $slug
+    ): ProductResource {
+        $product = $this->productService
+            ->getProduct($slug);
+  
+        return new ProductResource(
+            $product
+        );
+    }
 }

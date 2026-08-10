@@ -11,6 +11,7 @@ use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
 {
@@ -18,16 +19,42 @@ class OrderController extends Controller
         private readonly OrderService $orderService
     ) {}
 
-    public function customerIndex(
-        Request $request
-    ): AnonymousResourceCollection {
-        $orders = $this->orderService
-            ->getCustomerOrders(
-                $request->user()
-            );
+   public function customerIndex(
+    Request $request
+): AnonymousResourceCollection {
+    $filters = $request->validate([
+        'search' => [
+            'nullable',
+            'string',
+            'max:100',
+        ],
 
-        return OrderResource::collection($orders);
-    }
+        'status' => [
+            'nullable',
+            Rule::enum(
+                OrderStatus::class
+            ),
+        ],
+
+        'per_page' => [
+            'nullable',
+            'integer',
+            'min:5',
+            'max:50',
+        ],
+    ]);
+
+    $orders = $this
+        ->orderService
+        ->getCustomerOrders(
+            $request->user(),
+            $filters
+        );
+
+    return OrderResource::collection(
+        $orders
+    );
+}
 
     public function sellerIndex(
         Request $request

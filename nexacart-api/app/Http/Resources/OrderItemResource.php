@@ -21,13 +21,25 @@ class OrderItemResource extends JsonResource
             'quantity' => $this->quantity,
 
             'unit_price'
-                => (float) $this->unit_price,
+            => (float) $this->unit_price,
 
             'line_total'
-                => (float) $this->line_total,
+            => (float) $this->line_total,
 
             'seller' => new UserResource(
                 $this->whenLoaded('seller')
+            ),
+            'is_reviewed' =>
+            $this->relationLoaded(
+                'review'
+            )
+                ? $this->review !== null
+                : false,
+            'review' =>
+            new ReviewResource(
+                $this->whenLoaded(
+                    'review'
+                )
             ),
         ];
     }

@@ -1,9 +1,9 @@
 <script setup>
 import {
-    ArrowRight,
     Check,
     ChevronRight,
     Heart,
+    ImageOff,
     PackageCheck,
     RefreshCcw,
     ShieldCheck,
@@ -15,778 +15,1175 @@ import {
 
 import {
     computed,
+    onMounted,
     ref,
+    watch,
 } from 'vue'
 
-import { useRoute } from 'vue-router'
-import { useCartStore } from '@/stores/cart'
-import ProductCard from '@/components/customer/ProductCard.vue'
-import QuantitySelector from '@/components/customer/QuantitySelector.vue'
-const cartStore = useCartStore()
+import {
+    useRoute,
+    useRouter,
+} from 'vue-router'
+
+import QuantitySelector
+    from '@/components/customer/QuantitySelector.vue'
+
+import {
+    getProduct,
+} from '@/api/products'
+
+import {
+    getPublicShopProducts,
+} from '@/api/shop'
+import {
+    addToWishlist,
+    removeFromWishlist,
+} from '@/api/wishlist'
+
+import {
+    useCartStore,
+} from '@/stores/cart'
+
+import {
+    useAuthStore,
+} from '@/stores/auth'
+
 const route = useRoute()
+const router = useRouter()
+
+const cartStore = useCartStore()
+const authStore = useAuthStore()
+
+const product = ref(null)
 
 const quantity = ref(1)
 const selectedImageIndex = ref(0)
 const activeTab = ref('description')
-const isWishlisted = ref(false)
 
-const product = ref({
-    id: 1,
-    name: 'Tai nghe không dây chống ồn chủ động',
-    slug: 'tai-nghe-khong-day-chong-on',
-    sku: 'NC-AU-001',
-    category: 'Thiết bị âm thanh',
-    brand: 'Auralis',
-    price: 1890000,
-    originalPrice: 2290000,
-    rating: 4.8,
-    reviews: 128,
-    sold: 364,
-    stock: 18,
-    badge: 'Bán chạy',
+const isLoading = ref(false)
+const isWishlistLoading = ref(false)
+const isAddingToCart = ref(false)
 
-    images: [
-        'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1200&q=85',
+const errorMessage = ref('')
+const successMessage = ref('')
 
-        'https://images.unsplash.com/photo-1484704849700-f032a568e944?auto=format&fit=crop&w=1200&q=85',
+const productImages = computed(() => {
+    if (!product.value) {
+        return []
+    }
 
-        'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=1200&q=85',
+    if (
+        Array.isArray(
+            product.value.images,
+        ) &&
+        product.value.images.length > 0
+    ) {
+        return product.value.images
+    }
 
-        'https://images.unsplash.com/photo-1583394838336-acd977736f90?auto=format&fit=crop&w=1200&q=85',
-    ],
+    if (product.value.main_image) {
+        return [
+            product.value.main_image,
+        ]
+    }
 
-    shortDescription:
-        'Tai nghe không dây với khả năng chống ồn chủ động, âm thanh cân bằng và thiết kế phù hợp cho việc sử dụng hằng ngày.',
-
-    description: [
-        'Sản phẩm được thiết kế cho nhu cầu nghe nhạc, làm việc và di chuyển trong môi trường có nhiều tiếng ồn.',
-
-        'Công nghệ chống ồn chủ động giúp hạn chế âm thanh từ môi trường, trong khi chế độ xuyên âm hỗ trợ người dùng theo dõi những âm thanh quan trọng xung quanh.',
-
-        'Phần đệm tai mềm và khung tai nghe có thể điều chỉnh giúp duy trì sự thoải mái khi sử dụng trong thời gian dài.',
-    ],
-
-    specifications: [
-        {
-            label: 'Kiểu kết nối',
-            value: 'Bluetooth 5.3',
-        },
-        {
-            label: 'Thời lượng pin',
-            value: 'Lên đến 35 giờ',
-        },
-        {
-            label: 'Sạc',
-            value: 'USB Type-C',
-        },
-        {
-            label: 'Chống ồn',
-            value: 'Chống ồn chủ động ANC',
-        },
-        {
-            label: 'Trọng lượng',
-            value: '254 g',
-        },
-        {
-            label: 'Bảo hành',
-            value: '12 tháng',
-        },
-    ],
-
-    seller: {
-        name: 'Auralis Official Store',
-        rating: 4.9,
-        products: 42,
-        joinedAt: '2025',
-    },
+    return []
 })
 
-const relatedProducts = [
-    {
-        id: 2,
-        name: 'Loa bluetooth để bàn thiết kế tối giản',
-        slug: 'loa-bluetooth-de-ban-toi-gian',
-        category: 'Thiết bị âm thanh',
-        price: 2190000,
-        originalPrice: null,
-        rating: 4.5,
-        reviews: 73,
-        badge: null,
-        image:
-            'https://images.unsplash.com/photo-1545454675-3531b543be5d?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 3,
-        name: 'Tai nghe nhét tai không dây nhỏ gọn',
-        slug: 'tai-nghe-nhet-tai-khong-day',
-        category: 'Thiết bị âm thanh',
-        price: 1190000,
-        originalPrice: 1390000,
-        rating: 4.6,
-        reviews: 91,
-        badge: 'Hàng mới',
-        image:
-            'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 4,
-        name: 'Giá đỡ tai nghe bằng kim loại',
-        slug: 'gia-do-tai-nghe-kim-loai',
-        category: 'Phụ kiện',
-        price: 390000,
-        originalPrice: null,
-        rating: 4.7,
-        reviews: 54,
-        badge: null,
-        image:
-            'https://images.unsplash.com/photo-1599669454699-248893623440?auto=format&fit=crop&w=800&q=80',
-    },
-    {
-        id: 5,
-        name: 'Loa di động chống nước',
-        slug: 'loa-di-dong-chong-nuoc',
-        category: 'Thiết bị âm thanh',
-        price: 1490000,
-        originalPrice: 1690000,
-        rating: 4.8,
-        reviews: 146,
-        badge: 'Bán chạy',
-        image:
-            'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=800&q=80',
-    },
-]
-
 const currentImage = computed(() => {
-    return product.value.images[
+    return (
+        productImages.value[
         selectedImageIndex.value
-    ]
+        ] ?? null
+    )
+})
+
+const isOutOfStock = computed(() => {
+    return (
+        !product.value ||
+        Number(
+            product.value.stock ?? 0,
+        ) <= 0
+    )
+})
+
+const isUnavailable = computed(() => {
+    if (!product.value) {
+        return true
+    }
+
+    return (
+        product.value.status !==
+        'active' ||
+        product.value.is_suspended ||
+        isOutOfStock.value
+    )
+})
+
+const currentPrice = computed(() => {
+    return Number(
+        product.value
+            ?.effective_price ??
+        product.value
+            ?.sale_price ??
+        product.value
+            ?.price ??
+        0,
+    )
+})
+
+const originalPrice = computed(() => {
+    if (!product.value) {
+        return null
+    }
+
+    const price = Number(
+        product.value.price ?? 0,
+    )
+
+    const effectivePrice =
+        currentPrice.value
+
+    if (
+        effectivePrice >= price
+    ) {
+        return null
+    }
+
+    return price
 })
 
 const discountPercent = computed(() => {
-    if (!product.value.originalPrice) {
+    if (
+        !originalPrice.value ||
+        originalPrice.value <= 0
+    ) {
         return 0
     }
 
     return Math.round(
         (
             1 -
-            product.value.price /
-                product.value.originalPrice
+            currentPrice.value /
+            originalPrice.value
         ) * 100,
     )
 })
 
-const isOutOfStock = computed(() => {
-    return product.value.stock <= 0
-})
-
 const totalPrice = computed(() => {
-    return product.value.price * quantity.value
+    return (
+        currentPrice.value *
+        Number(quantity.value)
+    )
 })
 
-function formatPrice(value) {
-    return new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-        maximumFractionDigits: 0,
-    }).format(value)
-}
+const isWishlisted = computed(() => {
+    return Boolean(
+        product.value
+            ?.is_wishlisted,
+    )
+})
+function formatReviewDate(value) {
+    if (!value) {
+        return ''
+    }
 
-function selectImage(index) {
-    selectedImageIndex.value = index
+    return new Intl.DateTimeFormat(
+        'vi-VN',
+        {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        },
+    ).format(
+        new Date(value),
+    )
 }
+async function fetchProduct() {
+    const slug =
+        route.params.slug
 
-function toggleWishlist() {
-    isWishlisted.value =
-        !isWishlisted.value
-}
+    if (!slug) {
+        errorMessage.value =
+            'Không xác định được sản phẩm.'
 
-function addToCart() {
-    if (isOutOfStock.value) {
         return
     }
 
-    cartStore.addItem(
-        {
-            ...product.value,
-            image: product.value.images[0],
-        },
-        quantity.value,
+    isLoading.value = true
+    errorMessage.value = ''
+
+    try {
+     
+        const response =
+            await getProduct(
+                slug,
+            )
+   console.log(response)
+
+        /*
+         * Tùy response API.
+         *
+         * ProductResource thường:
+         * response.data.data
+         */
+        product.value =
+            response.data?.data ??
+            response.data ??
+            null
+
+        quantity.value = 1
+        selectedImageIndex.value = 0
+    } catch (error) {
+        product.value = null
+
+        errorMessage.value =
+            error.response?.data?.message ??
+            'Không thể tải thông tin sản phẩm.'
+    } finally {
+        isLoading.value = false
+    }
+}
+
+function getImageUrl(image) {
+    if (!image) {
+        return ''
+    }
+
+    return (
+        image.url ??
+        image.path ??
+        ''
     )
 }
 
-function buyNow() {
-    if (isOutOfStock.value) {
+function selectImage(index) {
+    selectedImageIndex.value =
+        index
+}
+
+async function toggleWishlist() {
+    if (!product.value) {
         return
     }
 
-    console.log('Buy now:', {
-        productId: product.value.id,
-        quantity: quantity.value,
-    })
+    /*
+     * Wishlist chỉ dành cho user
+     * đã đăng nhập.
+     */
+    if (!authStore.isAuthenticated) {
+        router.push({
+            name: 'login',
+
+            query: {
+                redirect:
+                    route.fullPath,
+            },
+        })
+
+        return
+    }
+
+    if (isWishlistLoading.value) {
+        return
+    }
+
+    isWishlistLoading.value = true
+
+    errorMessage.value = ''
+    successMessage.value = ''
+
+    try {
+        if (
+            product.value
+                .is_wishlisted
+        ) {
+            const response =
+                await removeFromWishlist(
+                    product.value.id,
+                )
+
+            product.value
+                .is_wishlisted = false
+
+            successMessage.value =
+                response.data?.message ??
+                'Đã bỏ sản phẩm khỏi danh sách yêu thích.'
+        } else {
+            const response =
+                await addToWishlist(
+                    product.value.id,
+                )
+
+            product.value
+                .is_wishlisted = true
+
+            successMessage.value =
+                response.data?.message ??
+                'Đã thêm sản phẩm vào danh sách yêu thích.'
+        }
+    } catch (error) {
+        errorMessage.value =
+            error.response?.data?.message ??
+            'Không thể cập nhật danh sách yêu thích.'
+    } finally {
+        isWishlistLoading.value = false
+    }
 }
 
-function handleRelatedAddToCart(item) {
-    cartStore.addItem(item, 1)
+async function addToCart() {
+    if (
+        !product.value ||
+        isUnavailable.value ||
+        isAddingToCart.value
+    ) {
+        return
+    }
+
+    isAddingToCart.value = true
+
+    errorMessage.value = ''
+    successMessage.value = ''
+
+    try {
+
+        await cartStore.addItem(
+            product.value.id,
+            quantity.value,
+        )
+
+        successMessage.value =
+            'Đã thêm sản phẩm vào giỏ hàng.'
+    } catch (error) {
+        errorMessage.value =
+            error.response?.data?.message ??
+            error.message ??
+            'Không thể thêm sản phẩm vào giỏ hàng.'
+    } finally {
+        isAddingToCart.value = false
+    }
 }
 
-function handleRelatedWishlist(item) {
-    console.log('Related wishlist:', item)
+async function buyNow() {
+    if (
+        !product.value ||
+        isUnavailable.value
+    ) {
+        return
+    }
+
+    try {
+        await addToCart()
+
+        router.push({
+            name: 'cart',
+        })
+    } catch (error) {
+        console.error(
+            'Không thể mua ngay:',
+            error,
+        )
+    }
 }
+
+function formatPrice(value) {
+    return new Intl.NumberFormat(
+        'vi-VN',
+        {
+            style: 'currency',
+            currency: 'VND',
+            maximumFractionDigits: 0,
+        },
+    ).format(
+        Number(value ?? 0),
+    )
+}
+
+function getStatusMessage() {
+    if (!product.value) {
+        return ''
+    }
+
+    if (
+        product.value.is_suspended
+    ) {
+        return 'Sản phẩm hiện đã bị tạm khóa.'
+    }
+
+    if (
+        product.value.status !==
+        'active'
+    ) {
+        return 'Sản phẩm hiện không được mở bán.'
+    }
+
+    if (isOutOfStock.value) {
+        return 'Sản phẩm tạm hết hàng.'
+    }
+
+    return `Còn ${product.value.stock} sản phẩm`
+}
+
+watch(
+    () => route.params.slug,
+    () => {
+        fetchProduct()
+    },
+)
+
+onMounted(() => {
+    fetchProduct()
+})
 </script>
 
 <template>
     <div class="product-detail-page">
-        <nav
-            class="breadcrumb"
-            aria-label="Breadcrumb"
-        >
-            <RouterLink to="/">
-                Trang chủ
-            </RouterLink>
+        <div v-if="errorMessage" class="alert alert-error">
+            {{ errorMessage }}
+        </div>
 
-            <ChevronRight :size="14" />
+        <div v-if="successMessage" class="alert alert-success">
+            {{ successMessage }}
+        </div>
 
-            <RouterLink to="/products">
-                Sản phẩm
-            </RouterLink>
+        <div v-if="isLoading" class="state-box">
+            Đang tải sản phẩm...
+        </div>
 
-            <ChevronRight :size="14" />
+        <div v-else-if="!product" class="state-box">
+            Không tìm thấy sản phẩm.
+        </div>
 
-            <span aria-current="page">
-                {{ product.name }}
-            </span>
-        </nav>
+        <template v-else>
+            <!-- BREADCRUMB -->
+            <nav class="breadcrumb" aria-label="Breadcrumb">
+                <RouterLink to="/">
+                    Trang chủ
+                </RouterLink>
 
-        <section class="product-overview">
-            <div class="product-gallery">
-                <div class="product-gallery__thumbnails">
-                    <button
-                        v-for="(image, index) in product.images"
-                        :key="image"
-                        type="button"
-                        class="product-gallery__thumbnail"
-                        :class="{
-                            'product-gallery__thumbnail--active':
-                                selectedImageIndex ===
-                                index,
-                        }"
-                        :aria-label="
-                            `Xem ảnh sản phẩm ${index + 1}`
-                        "
-                        @click="selectImage(index)"
-                    >
-                        <img
-                            :src="image"
-                            :alt="
-                                `${product.name} - ảnh ${index + 1}`
-                            "
-                        />
-                    </button>
-                </div>
+                <ChevronRight :size="14" />
 
-                <div class="product-gallery__main">
-                    <span
-                        v-if="product.badge"
-                        class="product-gallery__badge"
-                    >
-                        {{ product.badge }}
-                    </span>
+                <RouterLink :to="{
+                    name: 'products',
+                }">
+                    Sản phẩm
+                </RouterLink>
 
-                    <img
-                        :src="currentImage"
-                        :alt="product.name"
-                        class="product-gallery__main-image"
-                    />
-                </div>
-            </div>
+                <ChevronRight :size="14" />
 
-            <div class="product-information">
-                <div class="product-information__meta">
-                    <RouterLink
-                        :to="{
-                            name: 'products',
-                            query: {
-                                category: product.category,
-                            },
-                        }"
-                    >
-                        {{ product.category }}
-                    </RouterLink>
-
-                    <span>
-                        Mã sản phẩm:
-                        {{ product.sku }}
-                    </span>
-                </div>
-
-                <h1>
+                <span>
                     {{ product.name }}
-                </h1>
-
-                <div class="product-rating">
-                    <div class="product-rating__score">
-                        <Star
-                            :size="16"
-                            fill="currentColor"
-                        />
-
-                        <strong>
-                            {{ product.rating }}
-                        </strong>
-                    </div>
-
-                    <span>
-                        {{ product.reviews }}
-                        đánh giá
-                    </span>
-
-                    <span>
-                        Đã bán
-                        {{ product.sold }}
-                    </span>
-                </div>
-
-                <p class="product-information__description">
-                    {{ product.shortDescription }}
-                </p>
-
-                <div class="product-price">
-                    <span class="product-price__current">
-                        {{
-                            formatPrice(
-                                product.price,
-                            )
-                        }}
-                    </span>
-
-                    <span
-                        v-if="product.originalPrice"
-                        class="product-price__original"
-                    >
-                        {{
-                            formatPrice(
-                                product.originalPrice,
-                            )
-                        }}
-                    </span>
-
-                    <span
-                        v-if="discountPercent > 0"
-                        class="product-price__discount"
-                    >
-                        -{{ discountPercent }}%
-                    </span>
-                </div>
-
-                <div
-                    class="stock-status"
-                    :class="{
-                        'stock-status--available':
-                            !isOutOfStock,
-                        'stock-status--unavailable':
-                            isOutOfStock,
-                    }"
-                >
-                    <Check
-                        v-if="!isOutOfStock"
-                        :size="16"
-                    />
-
-                    <span>
-                        {{
-                            isOutOfStock
-                                ? 'Sản phẩm tạm hết hàng'
-                                : `Còn ${product.stock} sản phẩm`
-                        }}
-                    </span>
-                </div>
-
-                <div class="purchase-section">
-                    <div class="purchase-section__quantity">
-                        <span>Số lượng</span>
-
-                        <QuantitySelector
-                            v-model="quantity"
-                            :max="product.stock"
-                            :disabled="isOutOfStock"
-                        />
-                    </div>
-
-                    <div class="purchase-section__total">
-                        <span>Tạm tính</span>
-
-                        <strong>
-                            {{
-                                formatPrice(
-                                    totalPrice,
-                                )
-                            }}
-                        </strong>
-                    </div>
-
-                    <div class="purchase-section__actions">
-                        <button
-                            type="button"
-                            class="purchase-button purchase-button--primary"
-                            :disabled="isOutOfStock"
-                            @click="addToCart"
-                        >
-                            <ShoppingBag :size="19" />
-
-                            Thêm vào giỏ hàng
-                        </button>
-
-                        <button
-                            type="button"
-                            class="purchase-button purchase-button--secondary"
-                            :disabled="isOutOfStock"
-                            @click="buyNow"
-                        >
-                            Mua ngay
-                        </button>
-
-                        <button
-                            type="button"
-                            class="wishlist-button"
-                            :class="{
-                                'wishlist-button--active':
-                                    isWishlisted,
-                            }"
-                            :aria-label="
-                                isWishlisted
-                                    ? 'Xóa khỏi yêu thích'
-                                    : 'Thêm vào yêu thích'
-                            "
-                            @click="toggleWishlist"
-                        >
-                            <Heart
-                                :size="20"
-                                :fill="
-                                    isWishlisted
-                                        ? 'currentColor'
-                                        : 'none'
-                                "
-                            />
-                        </button>
-                    </div>
-                </div>
-
-                <div class="purchase-benefits">
-                    <article>
-                        <Truck :size="20" />
-
-                        <div>
-                            <strong>
-                                Giao hàng theo dõi được
-                            </strong>
-
-                            <span>
-                                Kiểm tra trạng thái đơn hàng
-                                trong tài khoản.
-                            </span>
-                        </div>
-                    </article>
-
-                    <article>
-                        <RefreshCcw :size="20" />
-
-                        <div>
-                            <strong>
-                                Chính sách đổi trả
-                            </strong>
-
-                            <span>
-                                Điều kiện đổi trả được công
-                                khai trước khi đặt hàng.
-                            </span>
-                        </div>
-                    </article>
-
-                    <article>
-                        <ShieldCheck :size="20" />
-
-                        <div>
-                            <strong>
-                                Thanh toán an toàn
-                            </strong>
-
-                            <span>
-                                Thông tin thanh toán được xử
-                                lý qua kết nối bảo mật.
-                            </span>
-                        </div>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section class="seller-card">
-            <div class="seller-card__identity">
-                <span class="seller-card__avatar">
-                    <Store :size="25" />
                 </span>
+            </nav>
 
-                <div>
-                    <p>Được bán bởi</p>
+            <!-- MAIN PRODUCT -->
+            <section class="product-overview">
+                <!-- GALLERY -->
+                <div class="product-gallery">
+                    <div v-if="
+                        productImages.length >
+                        1
+                    " class="thumbnail-list">
+                        <button v-for="(
+image,
+    index
+                            ) in productImages" :key="image.id ??
+                                index
+                                " type="button" class="thumbnail-button" :class="{
+                                    active:
+                                        selectedImageIndex ===
+                                        index,
+                                }" @click="
+                                    selectImage(
+                                        index,
+                                    )
+                                    ">
+                            <img :src="getImageUrl(
+                                image,
+                            )
+                                " :alt="`${product.name} ${index + 1}`
+                                    ">
+                        </button>
+                    </div>
 
-                    <h2>
-                        {{ product.seller.name }}
-                    </h2>
+                    <div class="main-image">
+                        <img v-if="
+                            currentImage &&
+                            getImageUrl(
+                                currentImage,
+                            )
+                        " :src="getImageUrl(
+                            currentImage,
+                        )
+                            " :alt="product.name
+                                ">
 
-                    <div class="seller-card__rating">
-                        <Star
-                            :size="14"
-                            fill="currentColor"
-                        />
+                        <div v-else class="image-empty">
+                            <ImageOff :size="44" />
 
-                        <span>
-                            {{ product.seller.rating }}
+                            <span>
+                                Chưa có ảnh
+                            </span>
+                        </div>
+
+                        <span v-if="
+                            discountPercent >
+                            0
+                        " class="discount-badge">
+                            -{{
+                                discountPercent
+                            }}%
                         </span>
                     </div>
                 </div>
-            </div>
 
-            <dl class="seller-card__stats">
-                <div>
-                    <dt>
-                        {{ product.seller.products }}
-                    </dt>
+                <!-- INFORMATION -->
+                <div class="product-information">
+                    <div class="product-meta">
+                        <RouterLink v-if="
+                            product.category
+                        " :to="{
+                            name:
+                                'products',
 
-                    <dd>Sản phẩm</dd>
+                            query: {
+                                category:
+                                    product
+                                        .category
+                                        .slug,
+                            },
+                        }">
+                            {{
+                                product.category
+                                    .name
+                            }}
+                        </RouterLink>
+
+                        <span>
+                            SKU:
+                            {{
+                                product.sku ??
+                                '--'
+                            }}
+                        </span>
+                    </div>
+
+                    <h1>
+                        {{ product.name }}
+                    </h1>
+
+                    <div class="rating-row">
+                        <span class="rating-score">
+                            <Star :size="16" fill="currentColor" />
+
+                            <strong>
+                                {{
+                                    product
+                                        .average_rating ??
+                                    '0.0'
+                                }}
+                            </strong>
+                        </span>
+
+                        <span>
+                            {{
+                                product
+                                    .reviews_count ??
+                                0
+                            }}
+                            đánh giá
+                        </span>
+                    </div>
+
+                    <div class="price-row">
+                        <strong>
+                            {{
+                                formatPrice(
+                                    currentPrice,
+                                )
+                            }}
+                        </strong>
+
+                        <span v-if="
+                            originalPrice
+                        " class="old-price">
+                            {{
+                                formatPrice(
+                                    originalPrice,
+                                )
+                            }}
+                        </span>
+
+                        <span v-if="
+                            discountPercent >
+                            0
+                        " class="price-discount">
+                            Tiết kiệm
+                            {{
+                                discountPercent
+                            }}%
+                        </span>
+                    </div>
+
+                    <div class="stock-status" :class="{
+                        available:
+                            !isUnavailable,
+                        unavailable:
+                            isUnavailable,
+                    }">
+                        <Check v-if="
+                            !isUnavailable
+                        " :size="16" />
+
+                        <span>
+                            {{
+                                getStatusMessage()
+                            }}
+                        </span>
+                    </div>
+
+                    <div class="purchase-panel">
+                        <div class="purchase-row">
+                            <span>
+                                Số lượng
+                            </span>
+
+                            <QuantitySelector v-model="quantity
+                                " :max="Number(
+                                    product
+                                        .stock ??
+                                    0,
+                                )
+                                    " :disabled="isUnavailable
+                                        " />
+                        </div>
+
+                        <div class="purchase-row">
+                            <span>
+                                Tạm tính
+                            </span>
+
+                            <strong>
+                                {{
+                                    formatPrice(
+                                        totalPrice,
+                                    )
+                                }}
+                            </strong>
+                        </div>
+
+                        <div class="purchase-actions">
+                            <button type="button" class="primary-button" :disabled="isUnavailable ||
+                                isAddingToCart
+                                " @click="
+                                    addToCart
+                                ">
+                                <ShoppingBag :size="18" />
+
+                                {{
+                                    isAddingToCart
+                                        ? 'Đang thêm...'
+                                        : 'Thêm vào giỏ'
+                                }}
+                            </button>
+
+                            <button type="button" class="secondary-button" :disabled="isUnavailable
+                                " @click="
+                                    buyNow
+                                ">
+                                Mua ngay
+                            </button>
+
+                            <button type="button" class="wishlist-button" :class="{
+                                active:
+                                    isWishlisted,
+                            }" :disabled="isWishlistLoading
+                                " @click="
+                                    toggleWishlist
+                                ">
+                                <Heart :size="20" :fill="isWishlisted
+                                    ? 'currentColor'
+                                    : 'none'
+                                    " />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="benefits">
+                        <article>
+                            <Truck :size="20" />
+
+                            <div>
+                                <strong>
+                                    Giao hàng theo dõi được
+                                </strong>
+
+                                <span>
+                                    Theo dõi trạng thái
+                                    trong tài khoản.
+                                </span>
+                            </div>
+                        </article>
+
+                        <article>
+                            <ShieldCheck :size="20" />
+
+                            <div>
+                                <strong>
+                                    Thanh toán an toàn
+                                </strong>
+
+                                <span>
+                                    Thông tin đơn hàng
+                                    được xử lý bảo mật.
+                                </span>
+                            </div>
+                        </article>
+
+                        <article>
+                            <RefreshCcw :size="20" />
+
+                            <div>
+                                <strong>
+                                    Chính sách đổi trả
+                                </strong>
+
+                                <span>
+                                    Áp dụng theo chính sách
+                                    của NexaCart.
+                                </span>
+                            </div>
+                        </article>
+                    </div>
                 </div>
+            </section>
 
-                <div>
-                    <dt>
-                        {{ product.seller.joinedAt }}
-                    </dt>
+            <!-- SELLER -->
+           <section class="seller-panel">
+    <div class="seller-panel__info">
+        <div class="seller-panel__icon">
+            <Store :size="24" />
+        </div>
 
-                    <dd>Tham gia</dd>
-                </div>
-            </dl>
+        <div class="seller-panel__content">
+            <span class="seller-panel__label">
+                Được bán bởi
+            </span>
 
-            <RouterLink
-                :to="{
-                    name: 'products',
-                    query: {
-                        seller: product.seller.name,
-                    },
-                }"
-                class="seller-card__link"
+            <h2>
+                {{
+                    product.seller
+                        ?.shop
+                        ?.name ??
+                    product.seller
+                        ?.name ??
+                    'Người bán'
+                }}
+            </h2>
+
+            <p
+                v-if="
+                    product.seller?.shop
+                "
             >
+                Cửa hàng chính thức trên NexaCart
+            </p>
+        </div>
+    </div>
+
+    <div class="seller-panel__actions">
+        <RouterLink
+            :to="{
+                name: 'products',
+
+                query: {
+                    seller_id:
+                        product.seller
+                            ?.id,
+                },
+            }"
+            class="seller-action seller-action--secondary"
+        >
+            <ShoppingBag :size="17" />
+
+            <span>
+                Xem sản phẩm
+            </span>
+
+            <ArrowRight :size="15" />
+        </RouterLink>
+
+        <RouterLink
+            v-if="
+                product.seller
+                    ?.shop
+                    ?.slug
+            "
+            :to="{
+                name:
+                    'seller-public-shop',
+
+                params: {
+                    slug:
+                        product.seller
+                            .shop
+                            .slug,
+                },
+            }"
+            class="seller-action seller-action--primary"
+        >
+            <Store :size="17" />
+
+            <span>
                 Xem cửa hàng
+            </span>
 
-                <ArrowRight :size="17" />
-            </RouterLink>
-        </section>
+            <ArrowRight :size="15" />
+        </RouterLink>
+    </div>
+</section>
 
-        <section class="product-content">
-            <div
-                class="product-content__tabs"
-                role="tablist"
-            >
-                <button
-                    type="button"
-                    role="tab"
-                    :aria-selected="
-                        activeTab === 'description'
-                    "
-                    :class="{
-                        'product-content__tab--active':
+            <!-- DETAIL -->
+            <section class="detail-panel">
+                <div class="detail-tabs">
+                    <button type="button" :class="{
+                        active:
                             activeTab ===
                             'description',
-                    }"
-                    @click="
-                        activeTab = 'description'
-                    "
-                >
-                    Mô tả sản phẩm
-                </button>
-
-                <button
-                    type="button"
-                    role="tab"
-                    :aria-selected="
-                        activeTab ===
-                        'specifications'
-                    "
-                    :class="{
-                        'product-content__tab--active':
-                            activeTab ===
-                            'specifications',
-                    }"
-                    @click="
+                    }" @click="
                         activeTab =
-                            'specifications'
-                    "
-                >
-                    Thông số kỹ thuật
-                </button>
+                        'description'
+                        ">
+                        Mô tả sản phẩm
+                    </button>
 
-                <button
-                    type="button"
-                    role="tab"
-                    :aria-selected="
-                        activeTab === 'shipping'
-                    "
-                    :class="{
-                        'product-content__tab--active':
+                    <button type="button" :class="{
+                        active:
+                            activeTab ===
+                            'information',
+                    }" @click="
+                        activeTab =
+                        'information'
+                        ">
+                        Thông tin sản phẩm
+                    </button>
+
+                    <button type="button" :class="{
+                        active:
+                            activeTab ===
+                            'reviews',
+                    }" @click="
+                        activeTab = 'reviews'
+                        ">
+                        Đánh giá
+                        ({{
+                            product.reviews_count ??
+                            0
+                        }})
+                    </button>
+
+                    <button type="button" :class="{
+                        active:
                             activeTab ===
                             'shipping',
-                    }"
-                    @click="
-                        activeTab = 'shipping'
-                    "
-                >
-                    Vận chuyển và đổi trả
-                </button>
-            </div>
-
-            <div class="product-content__body">
-                <div
-                    v-if="
-                        activeTab === 'description'
-                    "
-                    class="description-content"
-                >
-                    <h2>
-                        Thông tin sản phẩm
-                    </h2>
-
-                    <p
-                        v-for="paragraph in product.description"
-                        :key="paragraph"
-                    >
-                        {{ paragraph }}
-                    </p>
+                    }" @click="
+                        activeTab =
+                        'shipping'
+                        ">
+                        Vận chuyển
+                    </button>
                 </div>
 
-                <div
-                    v-else-if="
+                <div class="detail-content">
+                    <div v-if="
                         activeTab ===
-                        'specifications'
-                    "
-                    class="specification-content"
-                >
-                    <h2>
-                        Thông số kỹ thuật
-                    </h2>
+                        'description'
+                    ">
+                        <h2>
+                            Mô tả sản phẩm
+                        </h2>
 
-                    <dl class="specification-table">
-                        <div
-                            v-for="item in product.specifications"
-                            :key="item.label"
-                        >
-                            <dt>
-                                {{ item.label }}
-                            </dt>
+                        <p v-if="
+                            product.description
+                        " class="description">
+                            {{
+                                product.description
+                            }}
+                        </p>
 
-                            <dd>
-                                {{ item.value }}
-                            </dd>
+                        <p v-else class="empty-description">
+                            Chưa có mô tả cho sản phẩm.
+                        </p>
+                    </div>
+
+                    <div v-else-if="
+                        activeTab ===
+                        'information'
+                    ">
+                        <h2>
+                            Thông tin sản phẩm
+                        </h2>
+
+                        <dl class="information-table">
+                            <div>
+                                <dt>
+                                    Mã sản phẩm
+                                </dt>
+
+                                <dd>
+                                    {{
+                                        product.sku ??
+                                        '--'
+                                    }}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt>
+                                    Danh mục
+                                </dt>
+
+                                <dd>
+                                    {{
+                                        product
+                                            .category
+                                            ?.name ??
+                                        '--'
+                                    }}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt>
+                                    Thương hiệu
+                                </dt>
+
+                                <dd>
+                                    {{
+                                        product
+                                            .brand
+                                            ?.name ??
+                                        '--'
+                                    }}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt>
+                                    Người bán
+                                </dt>
+
+                                <dd>
+                                    {{
+                                        product
+                                            .seller
+                                            ?.name ??
+                                        '--'
+                                    }}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt>
+                                    Tồn kho
+                                </dt>
+
+                                <dd>
+                                    {{
+                                        product.stock
+                                    }}
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div v-else-if="
+                        activeTab ===
+                        'reviews'
+                    " class="reviews-panel">
+                        <h2>
+                            Đánh giá từ người mua
+                        </h2>
+
+                        <div class="review-summary">
+                            <div class="review-summary__score">
+                                <strong>
+                                    {{
+                                        product.average_rating ??
+                                    '0.0'
+                                    }}
+                                </strong>
+
+                                <span>
+                                    / 5
+                                </span>
+                            </div>
+
+                            <div class="review-summary__info">
+                                <div class="review-summary__stars">
+                                    <Star v-for="star in 5" :key="star" :size="18" :fill="star <=
+                                            Math.round(
+                                                Number(
+                                                    product.average_rating ??
+                                                    0,
+                                                ),
+                                            )
+                                            ? 'currentColor'
+                                            : 'none'
+                                        " />
+                                </div>
+
+                                <span>
+                                    Dựa trên
+                                    {{
+                                        product.reviews_count ??
+                                    0
+                                    }}
+                                    đánh giá
+                                </span>
+                            </div>
                         </div>
-                    </dl>
+
+                        <div v-if="
+                            product.reviews?.length
+                        " class="review-list">
+                            <article v-for="review in product.reviews" :key="review.id" class="review-item">
+                                <div class="review-item__header">
+                                    <div class="review-user">
+                                        <div class="review-user__avatar">
+                                            {{
+                                                review.user?.name
+                                                    ?.charAt(0)
+                                                    ?.toUpperCase() ??
+                                            'U'
+                                            }}
+                                        </div>
+
+                                        <div>
+                                            <strong>
+                                                {{
+                                                    review.user?.name ??
+                                                    'Người mua'
+                                                }}
+                                            </strong>
+
+                                            <span>
+                                                {{
+                                                    formatReviewDate(
+                                                        review.created_at,
+                                                )
+                                                }}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="review-stars">
+                                        <Star v-for="star in 5" :key="star" :size="15" :fill="star <=
+                                                Number(
+                                                    review.rating,
+                                                )
+                                                ? 'currentColor'
+                                                : 'none'
+                                            " />
+                                    </div>
+                                </div>
+
+                                <p v-if="review.comment" class="review-comment">
+                                    {{ review.comment }}
+                                </p>
+
+                                <p v-else class="review-comment review-comment--empty">
+                                    Người mua không để lại
+                                    nhận xét.
+                                </p>
+                            </article>
+                        </div>
+
+                        <div v-else class="reviews-empty">
+                            <Star :size="28" />
+
+                            <strong>
+                                Chưa có đánh giá
+                            </strong>
+
+                            <span>
+                                Sản phẩm này chưa nhận được
+                                đánh giá từ người mua.
+                            </span>
+                        </div>
+                    </div>
+                    <div v-else-if="activeTab === 'shipping'">
+                        <h2>
+                            Vận chuyển và đổi trả
+                        </h2>
+
+                        <div class="shipping-list">
+                            <article>
+                                <PackageCheck :size="22" />
+
+                                <div>
+                                    <h3>
+                                        Xử lý đơn hàng
+                                    </h3>
+
+                                    <p>
+                                        Người bán xác nhận
+                                        và chuẩn bị đơn hàng
+                                        trước khi giao.
+                                    </p>
+                                </div>
+                            </article>
+
+                            <article>
+                                <Truck :size="22" />
+
+                                <div>
+                                    <h3>
+                                        Giao hàng
+                                    </h3>
+
+                                    <p>
+                                        Phí giao hàng được
+                                        tính trong quá trình
+                                        checkout.
+                                    </p>
+                                </div>
+                            </article>
+
+                            <article>
+                                <RefreshCcw :size="22" />
+
+                                <div>
+                                    <h3>
+                                        Đổi trả
+                                    </h3>
+
+                                    <p>
+                                        Sản phẩm được xử lý
+                                        theo chính sách đổi
+                                        trả của NexaCart.
+                                    </p>
+                                </div>
+                            </article>
+                        </div>
+                    </div>
                 </div>
-
-                <div
-                    v-else
-                    class="shipping-content"
-                >
-                    <h2>
-                        Vận chuyển và đổi trả
-                    </h2>
-
-                    <article>
-                        <PackageCheck :size="22" />
-
-                        <div>
-                            <h3>
-                                Xử lý đơn hàng
-                            </h3>
-
-                            <p>
-                                Nhà bán hàng xác nhận và xử
-                                lý đơn hàng theo thời gian
-                                hiển thị tại trang thanh
-                                toán.
-                            </p>
-                        </div>
-                    </article>
-
-                    <article>
-                        <Truck :size="22" />
-
-                        <div>
-                            <h3>
-                                Giao hàng
-                            </h3>
-
-                            <p>
-                                Phí và thời gian dự kiến
-                                được tính dựa trên địa chỉ
-                                nhận hàng.
-                            </p>
-                        </div>
-                    </article>
-
-                    <article>
-                        <RefreshCcw :size="22" />
-
-                        <div>
-                            <h3>
-                                Đổi trả
-                            </h3>
-
-                            <p>
-                                Yêu cầu đổi trả phải đáp ứng
-                                điều kiện của sản phẩm và
-                                chính sách của NexaCart.
-                            </p>
-                        </div>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section class="related-section">
-            <div class="related-section__heading">
-                <div>
-                    <p>Sản phẩm tương tự</p>
-
-                    <h2>Có thể bạn cũng quan tâm</h2>
-                </div>
-
-                <RouterLink
-                    to="/products"
-                    class="related-section__link"
-                >
-                    Xem tất cả
-
-                    <ArrowRight :size="17" />
-                </RouterLink>
-            </div>
-
-            <div class="related-product-grid">
-                <ProductCard
-                    v-for="item in relatedProducts"
-                    :key="item.id"
-                    :product="item"
-                    @add-to-cart="
-                        handleRelatedAddToCart
-                    "
-                    @toggle-wishlist="
-                        handleRelatedWishlist
-                    "
-                />
-            </div>
-        </section>
+            </section>
+        </template>
     </div>
 </template>
 
 <style scoped>
 .product-detail-page {
-    display: grid;
-    gap: 44px;
+    display: flex;
+    width: min(calc(100% - 40px),
+            1280px);
+    min-height: 500px;
+    flex-direction: column;
+    gap: 26px;
+    margin: 0 auto;
+    padding: 28px 0 60px;
+    color: #1e2a22;
+    font-family: Roboto, Arial, sans-serif;
 }
 
 .breadcrumb {
@@ -794,17 +1191,18 @@ function handleRelatedWishlist(item) {
     align-items: center;
     gap: 7px;
     overflow: hidden;
-    color: var(--color-text-muted);
+    color: #7a877f;
     font-size: 12px;
     white-space: nowrap;
 }
 
 .breadcrumb a {
-    flex-shrink: 0;
+    color: #647269;
+    text-decoration: none;
 }
 
 .breadcrumb a:hover {
-    color: var(--color-primary-700);
+    color: #24734a;
 }
 
 .breadcrumb span {
@@ -812,662 +1210,829 @@ function handleRelatedWishlist(item) {
     text-overflow: ellipsis;
 }
 
+/* OVERVIEW */
+
 .product-overview {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr)
-        minmax(420px, 0.9fr);
-    gap: 52px;
+        minmax(0, 1fr) minmax(400px, 0.85fr);
+    gap: 42px;
     align-items: start;
 }
 
 .product-gallery {
     display: grid;
-    grid-template-columns: 82px minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns:
+        76px minmax(0, 1fr);
+    gap: 13px;
 }
 
-.product-gallery__thumbnails {
+.thumbnail-list {
     display: grid;
     align-content: start;
-    gap: 12px;
+    gap: 10px;
 }
 
-.product-gallery__thumbnail {
+.thumbnail-button {
+    width: 100%;
+    aspect-ratio: 1;
     overflow: hidden;
-    aspect-ratio: 1 / 1;
     padding: 0;
-    background: var(--color-gray-100);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    transition:
-        border-color var(--transition-fast),
-        box-shadow var(--transition-fast);
+    border: 1px solid #d9e2dc;
+    background: #f5f7f6;
+    cursor: pointer;
 }
 
-.product-gallery__thumbnail:hover,
-.product-gallery__thumbnail--active {
-    border-color: var(--color-primary-500);
+.thumbnail-button.active,
+.thumbnail-button:hover {
+    border-color: #24734a;
 }
 
-.product-gallery__thumbnail--active {
-    box-shadow:
-        0 0 0 3px rgb(113 56 214 / 11%);
-}
-
-.product-gallery__thumbnail img {
+.thumbnail-button img {
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-.product-gallery__main {
+.main-image {
     position: relative;
+    display: grid;
     overflow: hidden;
-    aspect-ratio: 1 / 1;
-    background: var(--color-gray-100);
-    border: 1px solid var(--color-border);
-    border-radius: 20px;
+    aspect-ratio: 1;
+    place-items: center;
+    border: 1px solid #dce5df;
+    background: #f5f7f6;
 }
 
-.product-gallery__main-image {
+.main-image>img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
 }
 
-.product-gallery__badge {
+.image-empty {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 8px;
+    color: #8c9991;
+}
+
+.discount-badge {
     position: absolute;
-    top: 18px;
-    left: 18px;
-    z-index: 1;
-    padding: 6px 10px;
-    color: var(--color-primary-800);
-    background: rgb(243 239 252 / 94%);
-    border-radius: var(--radius-pill);
+    top: 14px;
+    left: 14px;
+    padding: 6px 9px;
+    color: #ffffff;
+    background: #24734a;
     font-size: 11px;
     font-weight: 700;
 }
 
+/* INFORMATION */
+
 .product-information {
-    display: grid;
-    align-content: start;
+    min-width: 0;
 }
 
-.product-information__meta {
+.product-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 18px;
-    color: var(--color-text-muted);
-    font-size: 12px;
+    gap: 10px 16px;
+    color: #76837b;
+    font-size: 11px;
 }
 
-.product-information__meta a {
-    color: var(--color-primary-700);
+.product-meta a {
+    color: #24734a;
     font-weight: 600;
+    text-decoration: none;
 }
 
 .product-information h1 {
-    margin-top: 16px;
-    font-size: clamp(32px, 4vw, 46px);
-    line-height: 1.15;
-    letter-spacing: -0.045em;
+    margin: 14px 0 0;
+    color: #17211b;
+    font-size: clamp(27px,
+            3vw,
+            38px);
+    line-height: 1.2;
 }
 
-.product-rating {
+.rating-row {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 8px 14px;
-    margin-top: 18px;
-    color: var(--color-text-muted);
-    font-size: 12px;
+    gap: 13px;
+    margin-top: 15px;
+    color: #718078;
+    font-size: 11px;
 }
 
-.product-rating__score {
-    display: flex;
+.rating-score {
+    display: inline-flex;
     align-items: center;
     gap: 5px;
-    color: #a15c08;
+    color: #9a6718;
 }
 
-.product-information__description {
-    margin-top: 22px;
-    font-size: 15px;
-    line-height: 1.75;
-}
-
-.product-price {
+.price-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    margin-top: 26px;
+    gap: 11px;
+    margin-top: 24px;
+    padding: 18px;
+    background: #f5f8f6;
 }
 
-.product-price__current {
-    color: var(--color-primary-700);
-    font-size: 30px;
-    font-weight: 700;
+.price-row>strong {
+    color: #24734a;
+    font-size: 28px;
 }
 
-.product-price__original {
-    color: var(--color-text-muted);
-    font-size: 15px;
+.old-price {
+    color: #9ba59f;
+    font-size: 14px;
     text-decoration: line-through;
 }
 
-.product-price__discount {
+.price-discount {
     padding: 5px 8px;
-    color: var(--color-danger);
-    background: #fff0f2;
-    border-radius: var(--radius-pill);
-    font-size: 11px;
+    border: 1px solid #a7cbb4;
+    color: #21633f;
+    background: #edf7f0;
+    font-size: 10px;
     font-weight: 700;
 }
 
 .stock-status {
     display: inline-flex;
+    min-height: 34px;
     align-items: center;
     gap: 7px;
-    width: fit-content;
-    margin-top: 18px;
-    padding: 8px 11px;
-    border-radius: var(--radius-pill);
-    font-size: 12px;
+    margin-top: 16px;
+    padding: 0 10px;
+    border: 1px solid;
+    font-size: 11px;
     font-weight: 600;
 }
 
-.stock-status--available {
-    color: var(--color-success);
-    background: #edf9f4;
+.stock-status.available {
+    border-color: #a5c9b2;
+    color: #246440;
+    background: #edf7f0;
 }
 
-.stock-status--unavailable {
-    color: var(--color-danger);
-    background: #fff0f2;
+.stock-status.unavailable {
+    border-color: #dfb1b1;
+    color: #983737;
+    background: #fff2f2;
 }
 
-.purchase-section {
+/* PURCHASE */
+
+.purchase-panel {
     display: grid;
-    gap: 20px;
-    margin-top: 28px;
-    padding-top: 26px;
-    border-top: 1px solid var(--color-border);
+    gap: 17px;
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid #e1e7e3;
 }
 
-.purchase-section__quantity,
-.purchase-section__total {
+.purchase-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 18px;
 }
 
-.purchase-section__quantity > span,
-.purchase-section__total > span {
-    color: var(--color-text-muted);
-    font-size: 13px;
+.purchase-row>span {
+    color: #68766d;
+    font-size: 12px;
 }
 
-.purchase-section__total strong {
-    color: var(--color-text-primary);
-    font-size: 17px;
+.purchase-row strong {
+    font-size: 16px;
 }
 
-.purchase-section__actions {
+.purchase-actions {
     display: grid;
     grid-template-columns:
-        minmax(0, 1.4fr)
-        minmax(0, 0.8fr)
-        48px;
-    gap: 10px;
+        minmax(0, 1.4fr) minmax(0, 0.8fr) 44px;
+    gap: 8px;
 }
 
-.purchase-button {
+.primary-button,
+.secondary-button,
+.wishlist-button {
+    min-height: 44px;
+    border-radius: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.primary-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    min-height: 48px;
-    padding-inline: 18px;
-    border-radius: var(--radius-md);
-    font-size: 13px;
+    gap: 7px;
+    border: 1px solid #24734a;
+    color: #ffffff;
+    background: #24734a;
+    font-size: 12px;
     font-weight: 600;
 }
 
-.purchase-button--primary {
-    color: var(--color-white);
-    background: var(--color-primary-700);
-    border: 1px solid var(--color-primary-700);
+.primary-button:hover:not(:disabled) {
+    background: #1e633f;
 }
 
-.purchase-button--primary:hover:not(:disabled) {
-    background: var(--color-primary-800);
+.secondary-button {
+    border: 1px solid #24734a;
+    color: #24734a;
+    background: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
 }
 
-.purchase-button--secondary {
-    color: var(--color-primary-800);
-    background: var(--color-primary-50);
-    border: 1px solid var(--color-primary-200);
-}
-
-.purchase-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.48;
+.secondary-button:hover:not(:disabled) {
+    background: #eef6f1;
 }
 
 .wishlist-button {
     display: grid;
     place-items: center;
-    min-height: 48px;
     padding: 0;
-    color: var(--color-text-secondary);
-    background: var(--color-white);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
+    border: 1px solid #c9d4cd;
+    color: #637168;
+    background: #ffffff;
 }
 
 .wishlist-button:hover,
-.wishlist-button--active {
-    color: var(--color-primary-700);
-    background: var(--color-primary-50);
-    border-color: var(--color-primary-200);
+.wishlist-button.active {
+    border-color: #24734a;
+    color: #24734a;
+    background: #edf6f0;
 }
 
-.purchase-benefits {
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* BENEFITS */
+
+.benefits {
     display: grid;
     gap: 1px;
-    margin-top: 26px;
-    overflow: hidden;
-    background: var(--color-border);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    margin-top: 22px;
+    border: 1px solid #dde5e0;
+    background: #dde5e0;
 }
 
-.purchase-benefits article {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 12px;
-    padding: 15px;
-    background: var(--color-white);
-}
-
-.purchase-benefits article > svg {
-    color: var(--color-primary-700);
-}
-
-.purchase-benefits strong {
-    display: block;
-    font-size: 12px;
-}
-
-.purchase-benefits span {
-    display: block;
-    margin-top: 4px;
-    color: var(--color-text-muted);
-    font-size: 11px;
-    line-height: 1.5;
-}
-
-.seller-card {
+.benefits article {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr)
-        auto
-        auto;
-    align-items: center;
-    gap: 42px;
-    padding: 24px;
-    background: var(--color-white);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+        auto 1fr;
+    gap: 11px;
+    padding: 14px;
+    background: #ffffff;
 }
 
-.seller-card__identity {
+.benefits svg {
+    color: #24734a;
+}
+
+.benefits strong {
+    display: block;
+    font-size: 12px;
+}
+
+.benefits span {
+    display: block;
+    margin-top: 4px;
+    color: #758279;
+    font-size: 10px;
+}
+/* =========================
+   SELLER
+========================= */
+
+.seller-panel {
     display: flex;
+    min-height: 92px;
     align-items: center;
-    gap: 15px;
+    justify-content: space-between;
+    gap: 28px;
+
+    padding: 18px 20px;
+
+    border: 1px solid #dce5df;
+
+    background: #ffffff;
 }
 
-.seller-card__avatar {
+.seller-panel__info {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 14px;
+}
+
+.seller-panel__icon {
     display: grid;
-    flex-shrink: 0;
+    width: 50px;
+    height: 50px;
+    flex: 0 0 auto;
     place-items: center;
-    width: 54px;
-    height: 54px;
-    color: var(--color-primary-700);
-    background: var(--color-primary-50);
-    border-radius: 16px;
+
+    color: #24734a;
+    background: #edf6f0;
 }
 
-.seller-card__identity p {
+.seller-panel__content {
+    min-width: 0;
+}
+
+.seller-panel__label {
+    display: block;
+
+    color: #7d8981;
     font-size: 11px;
 }
 
-.seller-card__identity h2 {
-    margin-top: 4px;
-    font-size: 16px;
-}
+.seller-panel__content h2 {
+    margin: 4px 0 0;
 
-.seller-card__rating {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-top: 6px;
-    color: #a15c08;
-    font-size: 12px;
-    font-weight: 600;
-}
+    overflow: hidden;
 
-.seller-card__stats {
-    display: flex;
-    gap: 32px;
-    margin: 0;
-}
-
-.seller-card__stats div {
-    display: grid;
-    gap: 4px;
-    text-align: center;
-}
-
-.seller-card__stats dt {
+    color: #26342b;
     font-size: 16px;
     font-weight: 700;
+
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.seller-card__stats dd {
-    margin: 0;
-    color: var(--color-text-muted);
+.seller-panel__content p {
+    margin: 5px 0 0;
+
+    color: #8a958e;
     font-size: 11px;
 }
 
-.seller-card__link {
-    display: inline-flex;
+/* ACTION GROUP */
+
+.seller-panel__actions {
+    display: flex;
+    flex: 0 0 auto;
     align-items: center;
-    gap: 8px;
+    gap: 9px;
+}
+
+.seller-action {
+    display: inline-flex;
     min-height: 42px;
-    padding-inline: 15px;
-    color: var(--color-primary-800);
-    background: var(--color-primary-50);
-    border: 1px solid var(--color-primary-200);
-    border-radius: var(--radius-md);
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+
+    padding: 0 14px;
+
+    border: 1px solid;
+
     font-size: 12px;
     font-weight: 600;
+
+    text-decoration: none;
+
+    transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease;
 }
 
-.product-content {
-    overflow: hidden;
-    background: var(--color-white);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+/* NÚT PHỤ */
+
+.seller-action--secondary {
+    border-color: #cbd6cf;
+
+    color: #425047;
+    background: #ffffff;
 }
 
-.product-content__tabs {
+.seller-action--secondary:hover {
+    border-color: #9fb8a8;
+
+    color: #24734a;
+    background: #f5f9f6;
+}
+
+/* NÚT CHÍNH */
+
+.seller-action--primary {
+    border-color: #24734a;
+
+    color: #ffffff;
+    background: #24734a;
+}
+
+.seller-action--primary:hover {
+    border-color: #1e633f;
+
+    background: #1e633f;
+}
+
+.seller-action svg:last-child {
+    transition:
+        transform 150ms ease;
+}
+
+.seller-action:hover
+svg:last-child {
+    transform: translateX(2px);
+}
+
+/* DETAIL */
+
+.detail-panel {
+    border: 1px solid #dce5df;
+    background: #ffffff;
+}
+
+.detail-tabs {
     display: flex;
-    align-items: stretch;
-    gap: 8px;
     overflow-x: auto;
-    padding: 0 24px;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid #e4eae6;
 }
 
-.product-content__tabs button {
-    position: relative;
-    flex-shrink: 0;
-    min-height: 58px;
-    padding: 0 10px;
-    color: var(--color-text-muted);
-    background: transparent;
+.detail-tabs button {
+    min-height: 52px;
+    padding: 0 18px;
     border: 0;
-    font-size: 13px;
+    border-bottom: 3px solid transparent;
+    color: #69776e;
+    background: #ffffff;
+    font: inherit;
+    font-size: 12px;
     font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
 }
 
-.product-content__tabs button::after {
-    position: absolute;
-    right: 10px;
-    bottom: -1px;
-    left: 10px;
-    height: 2px;
-    background: var(--color-primary-700);
-    content: '';
-    opacity: 0;
+.detail-tabs button.active {
+    border-bottom-color: #24734a;
+    color: #24734a;
 }
 
-.product-content__tabs
-    .product-content__tab--active {
-    color: var(--color-primary-700);
+.detail-content {
+    padding: 28px;
 }
 
-.product-content__tabs
-    .product-content__tab--active::after {
-    opacity: 1;
+.detail-content h2 {
+    margin: 0 0 18px;
+    font-size: 19px;
 }
 
-.product-content__body {
-    padding: 32px;
-}
-
-.product-content__body h2 {
-    margin-bottom: 20px;
-    font-size: 22px;
-}
-
-.description-content {
-    max-width: 820px;
-}
-
-.description-content p {
-    margin-top: 14px;
-    font-size: 14px;
-    line-height: 1.8;
-}
-
-.specification-table {
-    max-width: 760px;
+.description {
     margin: 0;
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    color: #4f5d54;
+    font-size: 13px;
+    line-height: 1.9;
+    white-space: pre-line;
 }
 
-.specification-table div {
+.empty-description {
+    color: #89958d;
+    font-size: 12px;
+}
+
+.information-table {
+    max-width: 720px;
+    margin: 0;
+    border: 1px solid #e0e7e2;
+}
+
+.information-table>div {
     display: grid;
-    grid-template-columns: 240px 1fr;
-    border-bottom: 1px solid var(--color-border);
+    grid-template-columns:
+        190px 1fr;
+    border-bottom: 1px solid #e5ebe7;
 }
 
-.specification-table div:last-child {
+.information-table>div:last-child {
     border-bottom: 0;
 }
 
-.specification-table dt,
-.specification-table dd {
+.information-table dt,
+.information-table dd {
     margin: 0;
-    padding: 14px 16px;
-    font-size: 13px;
+    padding: 13px 15px;
+    font-size: 12px;
 }
 
-.specification-table dt {
-    color: var(--color-text-secondary);
-    background: var(--color-gray-50);
+.information-table dt {
+    background: #f7f9f8;
+    color: #647269;
     font-weight: 600;
 }
 
-.shipping-content {
+.information-table dd {
+    color: #354239;
+}
+
+.shipping-list {
     display: grid;
-    gap: 16px;
-    max-width: 780px;
+    gap: 12px;
+    max-width: 760px;
 }
 
-.shipping-content article {
+.shipping-list article {
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 14px;
-    padding: 18px;
-    background: var(--color-gray-50);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    grid-template-columns:
+        auto 1fr;
+    gap: 13px;
+    padding: 16px;
+    border: 1px solid #e0e7e2;
+    background: #fafcfb;
 }
 
-.shipping-content article > svg {
-    color: var(--color-primary-700);
+.shipping-list svg {
+    color: #24734a;
 }
 
-.shipping-content h3 {
-    font-size: 14px;
-}
-
-.shipping-content p {
-    margin-top: 5px;
+.shipping-list h3 {
+    margin: 0;
     font-size: 13px;
-    line-height: 1.65;
 }
 
-.related-section {
-    display: grid;
-    gap: 26px;
-}
-
-.related-section__heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 24px;
-}
-
-.related-section__heading p {
-    margin-bottom: 8px;
-    color: var(--color-primary-700);
+.shipping-list p {
+    margin: 5px 0 0;
+    color: #748178;
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    line-height: 1.6;
 }
 
-.related-section__heading h2 {
-    font-size: 27px;
+/* STATES */
+
+.alert {
+    padding: 12px 15px;
+    border: 1px solid;
+    font-size: 12px;
 }
 
-.related-section__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    color: var(--color-primary-700);
-    font-size: 13px;
-    font-weight: 600;
+.alert-error {
+    border-color: #dfb0b0;
+    color: #973737;
+    background: #fff2f2;
 }
 
-.related-product-grid {
+.alert-success {
+    border-color: #9dc5aa;
+    color: #21633f;
+    background: #edf7f0;
+}
+
+.state-box {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
+    min-height: 380px;
+    place-items: center;
+    border: 1px solid #dce5df;
+    color: #748178;
+    background: #ffffff;
 }
 
-@media (max-width: 1100px) {
-    .product-overview {
-        grid-template-columns:
-            minmax(0, 1fr)
-            minmax(360px, 0.85fr);
-        gap: 32px;
-    }
+/* RESPONSIVE */
 
-    .product-gallery {
-        grid-template-columns: 68px minmax(0, 1fr);
-    }
-
-    .purchase-section__actions {
-        grid-template-columns: 1fr 48px;
-    }
-
-    .purchase-button--secondary {
-        grid-column: 1 / -1;
-        grid-row: 2;
-    }
-
-    .related-product-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 820px) {
+@media (max-width: 980px) {
     .product-overview {
         grid-template-columns: 1fr;
     }
-
-    .seller-card {
-        grid-template-columns: 1fr auto;
-    }
-
-    .seller-card__stats {
-        grid-column: 1 / -1;
-        grid-row: 2;
-        justify-content: flex-start;
-    }
 }
 
-@media (max-width: 620px) {
+@media (max-width: 640px) {
     .product-detail-page {
-        gap: 32px;
+        width: calc(100% - 28px);
     }
 
     .product-gallery {
         grid-template-columns: 1fr;
     }
 
-    .product-gallery__thumbnails {
+    .thumbnail-list {
         grid-row: 2;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns:
+            repeat(4,
+                minmax(0, 1fr));
     }
 
-    .product-information h1 {
-        font-size: 32px;
+    .purchase-actions {
+        grid-template-columns:
+            1fr 44px;
     }
 
-    .product-price__current {
-        font-size: 26px;
+    .secondary-button {
+        grid-column: 1 / -1;
+        grid-row: 2;
     }
 
-    .purchase-section__actions {
-        grid-template-columns: 1fr 46px;
+    .seller-panel {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
-    .seller-card {
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-
-    .seller-card__stats {
-        grid-column: auto;
-        grid-row: auto;
-    }
-
-    .seller-card__link {
+    .seller-link {
+        width: 100%;
         justify-content: center;
     }
 
-    .product-content__body {
-        padding: 24px 18px;
-    }
-
-    .specification-table div {
+    .information-table>div {
         grid-template-columns: 1fr;
     }
 
-    .specification-table dd {
-        border-top: 1px solid var(--color-border);
+    .information-table dd {
+        border-top: 1px solid #e5ebe7;
     }
 
-    .related-section__heading {
+    .detail-content {
+        padding: 20px 16px;
+    }
+}
+
+/* REVIEWS */
+
+.reviews-panel {
+    max-width: 900px;
+}
+
+.review-summary {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 28px;
+    padding: 20px;
+    border: 1px solid #dce5df;
+    background: #f7faf8;
+}
+
+.review-summary__score {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    padding-right: 24px;
+    border-right: 1px solid #dce5df;
+}
+
+.review-summary__score strong {
+    color: #24734a;
+    font-size: 36px;
+    line-height: 1;
+}
+
+.review-summary__score span {
+    color: #78857c;
+    font-size: 13px;
+}
+
+.review-summary__info {
+    display: grid;
+    gap: 7px;
+}
+
+.review-summary__stars {
+    display: flex;
+    gap: 3px;
+    color: #9a6718;
+}
+
+.review-summary__info > span {
+    color: #78857c;
+    font-size: 11px;
+}
+
+/* LIST */
+
+.review-list {
+    display: grid;
+}
+
+.review-item {
+    padding: 22px 0;
+    border-bottom: 1px solid #e2e9e4;
+}
+
+.review-item:first-child {
+    padding-top: 0;
+}
+
+.review-item:last-child {
+    border-bottom: 0;
+}
+
+.review-item__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.review-user {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.review-user__avatar {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #24734a;
+    background: #edf6f0;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.review-user > div:last-child {
+    display: grid;
+    gap: 4px;
+}
+
+.review-user strong {
+    color: #26342b;
+    font-size: 12px;
+}
+
+.review-user span {
+    color: #89958d;
+    font-size: 10px;
+}
+
+.review-stars {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    color: #9a6718;
+}
+
+.review-comment {
+    margin: 14px 0 0 49px;
+    color: #536158;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.review-comment--empty {
+    color: #929d96;
+    font-style: italic;
+}
+
+/* EMPTY */
+
+.reviews-empty {
+    display: grid;
+    min-height: 180px;
+    place-items: center;
+    align-content: center;
+    gap: 8px;
+    border: 1px dashed #d5ded8;
+    color: #8a968e;
+    background: #fafcfb;
+    text-align: center;
+}
+
+.reviews-empty svg {
+    color: #9a6718;
+}
+
+.reviews-empty strong {
+    color: #56635a;
+    font-size: 13px;
+}
+
+.reviews-empty span {
+    font-size: 11px;
+}
+@media (max-width: 640px) {
+    .review-summary {
         align-items: flex-start;
         flex-direction: column;
-        gap: 12px;
     }
 
-    .related-product-grid {
-        grid-template-columns: 1fr;
+    .review-summary__score {
+        padding-right: 0;
+        padding-bottom: 14px;
+        border-right: 0;
+        border-bottom: 1px solid #dce5df;
+    }
+
+    .review-item__header {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .review-comment {
+        margin-left: 0;
     }
 }
 </style>

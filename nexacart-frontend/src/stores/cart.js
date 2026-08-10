@@ -251,7 +251,6 @@ export const useCartStore = defineStore(
             quantity = 1,
         ) {
             cartError.value = ''
-
             const normalizedProductId =
                 Number(productId)
 

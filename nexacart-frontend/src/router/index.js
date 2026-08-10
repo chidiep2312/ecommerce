@@ -79,6 +79,112 @@ const routes = [
                         '@/views/customer/CheckoutView.vue'
                     ),
             },
+            {
+                path: '/shops/:slug',
+                name: 'seller-public-shop',
+                component: () =>
+                    import(
+                        '@/views/customer/PublicSellerShopView.vue'
+                    ),
+            },
+            {
+                path:
+                    'orders/:orderId/items/:itemId/review',
+
+                name:
+                    'customer-product-review',
+
+                component: () =>
+                    import(
+                        '@/views/customer/CustomerProductReviewView.vue'
+                    ),
+            },
+            {
+                path: '/account',
+                component: () =>
+                    import(
+                        '@/layouts/CustomerAccountLayout.vue'
+                    ),
+
+                meta: {
+                    requiresAuth: true,
+                    roles: ['customer'],
+                },
+
+                children: [
+                    {
+                        path: '',
+                        name: 'customer-dashboard',
+                        component: () =>
+                            import(
+                                '@/views/customer/CustomerDashboardView.vue'
+                            ),
+                    },
+
+                    {
+                        path: 'profile',
+                        name: 'customer-profile',
+                        component: () =>
+                            import(
+                                '@/views/customer/CustomerProfileView.vue'
+                            ),
+                    },
+
+                    {
+                        path: 'addresses',
+                        name: 'customer-addresses',
+                        component: () =>
+                            import(
+                                '@/views/customer/CustomerAddressView.vue'
+                            ),
+                    },
+
+                    {
+                        path: 'orders',
+                        name: 'customer-orders',
+                        component: () =>
+                            import(
+                                '@/views/customer/OrderListView.vue'
+                            ),
+                    },
+
+                    {
+                        path: 'orders/:id',
+                        name: 'customer-order-detail',
+                        component: () =>
+                            import(
+                                '@/views/customer/CustomerOrderDetailView.vue'
+                            ),
+                    },
+
+                    // {
+                    //     path: 'reviews',
+                    //     name: 'customer-reviews',
+                    //     component: () =>
+                    //         import(
+                    //             '@/views/customer/CustomerReviewView.vue'
+                    //         ),
+                    // },
+
+                    {
+                        path: 'wishlist',
+                        name: 'customer-wishlist',
+                        component: () =>
+                            import(
+                                '@/views/customer/CustomerWishlistView.vue'
+                            ),
+                    },
+
+                    // {
+                    //     path: 'change-password',
+                    //     name: 'customer-change-password',
+                    //     component: () =>
+                    //         import(
+                    //             '@/views/customer/ChangePasswordView.vue'
+                    //         ),
+                    // },
+                ],
+            },
 
         ],
 
@@ -197,12 +303,20 @@ const routes = [
                         '@/views/seller/inventory/SellerInventoryView.vue'
                     ),
             },
-              {
+            {
                 path: 'voucher',
                 name: 'seller-vouchers',
                 component: () =>
                     import(
                         '@/views/seller/voucher/SellerVoucherView.vue'
+                    ),
+            },
+            {
+                path: 'profile',
+                name: 'seller-profile',
+                component: () =>
+                    import(
+                        '@/views/seller/SellerShopView.vue'
                     ),
             },
         ],

@@ -15,7 +15,8 @@ use Illuminate\Validation\ValidationException;
 class OrderService
 {
     public function getCustomerOrders(
-        User $customer
+        User $customer,
+        array $filters = []
     ): LengthAwarePaginator {
         return Order::query()
             ->where(
@@ -26,8 +27,45 @@ class OrderService
                 'seller:id,name,email',
             ])
             ->withCount('items')
+            ->when(
+                $filters['search'] ?? null,
+                function (
+                    $query,
+                    string $search
+                ) {
+                    $query->where(
+                        'order_code',
+                        'like',
+                        '%' .
+                            trim($search) .
+                            '%'
+                    );
+                }
+            )
+            ->when(
+                $filters['status'] ?? null,
+                fn(
+                    $query,
+                    string $status
+                ) =>
+                $query->where(
+                    'status',
+                    $status
+                )
+            )
             ->latest('id')
-            ->paginate(15)
+            ->paginate(
+                min(
+                    max(
+                        (int) (
+                            $filters['per_page']
+                            ?? 10
+                        ),
+                        5
+                    ),
+                    50
+                )
+            )
             ->withQueryString();
     }
 
@@ -49,8 +87,8 @@ class OrderService
             ->withQueryString();
     }
 
-    public function getAdminOrders():
-        LengthAwarePaginator {
+    public function getAdminOrders(): LengthAwarePaginator
+    {
         return Order::query()
             ->with([
                 'customer:id,name,email',
@@ -70,9 +108,11 @@ class OrderService
             'seller:id,name,email',
             'voucher',
 
-            'items.product:id,name,slug,sku,stock',
+            'items.review',
 
-            'items.product.mainImage:id,product_id,path,is_main',
+            'items.product:id,name,slug,sku',
+
+            'items.product.mainImage:id,product_id,path,is_main,sort_order',
         ]);
     }
 
@@ -104,8 +144,8 @@ class OrderService
             ) {
                 throw new InvalidOrderStatusTransitionException(
                     "Không thể chuyển đơn hàng từ "
-                    . "{$currentStatus->value} "
-                    . "sang {$newStatus->value}."
+                        . "{$currentStatus->value} "
+                        . "sang {$newStatus->value}."
                 );
             }
 
@@ -130,7 +170,7 @@ class OrderService
 
             if (
                 $newStatus ===
-                    OrderStatus::Cancelled &&
+                OrderStatus::Cancelled &&
                 $actor !== null
             ) {
                 $updateData['cancelled_by'] =
@@ -173,7 +213,7 @@ class OrderService
             ) {
                 throw ValidationException::withMessages([
                     'order' =>
-                        'Bạn không có quyền hủy đơn hàng này.',
+                    'Bạn không có quyền hủy đơn hàng này.',
                 ]);
             }
 
@@ -183,7 +223,7 @@ class OrderService
             ) {
                 throw ValidationException::withMessages([
                     'status' =>
-                        'Chỉ có thể hủy đơn hàng đang chờ xác nhận.',
+                    'Chỉ có thể hủy đơn hàng đang chờ xác nhận.',
                 ]);
             }
 
@@ -193,13 +233,13 @@ class OrderService
 
             $lockedOrder->update([
                 'status' =>
-                    OrderStatus::Cancelled,
+                OrderStatus::Cancelled,
 
                 'cancelled_at' =>
-                    now(),
+                now(),
 
                 'cancelled_by' =>
-                    $customer->id,
+                $customer->id,
             ]);
 
             return $this->loadDetail(
@@ -217,20 +257,20 @@ class OrderService
 
         match ($status) {
             OrderStatus::Confirmed =>
-                $data['confirmed_at'] =
-                    now(),
+            $data['confirmed_at'] =
+                now(),
 
             OrderStatus::Shipping =>
-                $data['shipping_at'] =
-                    now(),
+            $data['shipping_at'] =
+                now(),
 
             OrderStatus::Completed =>
-                $data['completed_at'] =
-                    now(),
+            $data['completed_at'] =
+                now(),
 
             OrderStatus::Cancelled =>
-                $data['cancelled_at'] =
-                    now(),
+            $data['cancelled_at'] =
+                now(),
 
             default => null,
         };
@@ -328,7 +368,7 @@ class OrderService
                 'used_count' => max(
                     0,
                     (int) $voucher->used_count
-                    - 1
+                        - 1
                 ),
             ]);
         }
