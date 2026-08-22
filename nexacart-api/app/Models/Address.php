@@ -16,6 +16,10 @@ class Address extends Model
         'ward',
         'address_line',
         'is_default',
+        'province_id',
+        'district_id',
+        'ward_code'
+
     ];
 
     protected function casts(): array

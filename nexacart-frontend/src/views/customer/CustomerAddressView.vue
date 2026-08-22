@@ -22,6 +22,20 @@ import {
     updateCustomerAddress,
 } from '@/api/address'
 
+import {
+    getProvinces,
+    getDistricts,
+     getWards,
+} from '@/api/ghn'
+
+
+
+/*
+|--------------------------------------------------------------------------
+| Address
+|--------------------------------------------------------------------------
+*/
+
 const addresses = ref([])
 
 const isLoading = ref(false)
@@ -35,15 +49,267 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const validationErrors = ref({})
 
+/*
+|--------------------------------------------------------------------------
+| GHN master data
+|--------------------------------------------------------------------------
+*/
+
+const provinces = ref([])
+const districts = ref([])
+const wards = ref([])
+
+const isLoadingProvinces = ref(false)
+const isLoadingDistricts = ref(false)
+const isLoadingWards = ref(false)
+
+/*
+|--------------------------------------------------------------------------
+| Form
+|--------------------------------------------------------------------------
+*/
+
 const form = reactive({
     recipient_name: '',
     phone: '',
+
     province: '',
     district: '',
     ward: '',
+
+    province_id: null,
+    district_id: null,
+    ward_code: null,
+
     address_line: '',
     is_default: false,
 })
+
+/*
+|--------------------------------------------------------------------------
+| GHN
+|--------------------------------------------------------------------------
+*/
+
+async function loadProvinces() {
+    isLoadingProvinces.value = true
+
+    try {
+        const response =
+       await getProvinces()
+
+        provinces.value =
+            Array.isArray(
+                response.data?.data,
+            )
+                ? response.data.data
+                : []
+    } catch (error) {
+        console.error(
+            'Không thể tải tỉnh/thành GHN:',
+            error,
+        )
+
+        errorMessage.value =
+            'Không thể tải danh sách tỉnh/thành.'
+    } finally {
+        isLoadingProvinces.value = false
+    }
+}
+
+async function loadDistricts(
+    provinceId,
+) {
+    districts.value = []
+
+    if (!provinceId) {
+        return
+    }
+
+    isLoadingDistricts.value = true
+
+    try {
+        const response =
+               await getDistricts(
+                provinceId,
+            )
+
+        districts.value =
+            Array.isArray(
+                response.data?.data,
+            )
+                ? response.data.data
+                : []
+    } catch (error) {
+        console.error(
+            'Không thể tải quận/huyện GHN:',
+            error,
+        )
+
+        errorMessage.value =
+            'Không thể tải danh sách quận/huyện.'
+    } finally {
+        isLoadingDistricts.value = false
+    }
+}
+
+async function loadWards(
+    districtId,
+) {
+    wards.value = []
+
+    if (!districtId) {
+        return
+    }
+
+    isLoadingWards.value = true
+
+    try {
+        const response =
+              await getWards(
+        districtId,
+    )
+
+        wards.value =
+            Array.isArray(
+                response.data?.data,
+            )
+                ? response.data.data
+                : []
+    } catch (error) {
+        console.error(
+            'Không thể tải phường/xã GHN:',
+            error,
+        )
+
+        errorMessage.value =
+            'Không thể tải danh sách phường/xã.'
+    } finally {
+        isLoadingWards.value = false
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Province changed
+|--------------------------------------------------------------------------
+*/
+
+async function handleProvinceChange() {
+    /*
+     * Province thay đổi thì District và Ward
+     * cũ không còn hợp lệ.
+     */
+    form.district = ''
+    form.district_id = null
+
+    form.ward = ''
+    form.ward_code = null
+
+    districts.value = []
+    wards.value = []
+
+    const selectedProvince =
+        provinces.value.find(
+            (province) => {
+                return (
+                    Number(
+                        province.ProvinceID,
+                    ) ===
+                    Number(
+                        form.province_id,
+                    )
+                )
+            },
+        )
+
+    form.province =
+        selectedProvince
+            ?.ProvinceName ?? ''
+
+    if (!form.province_id) {
+        return
+    }
+
+    await loadDistricts(
+        form.province_id,
+    )
+}
+
+/*
+|--------------------------------------------------------------------------
+| District changed
+|--------------------------------------------------------------------------
+*/
+
+async function handleDistrictChange() {
+    /*
+     * District thay đổi thì Ward cũ
+     * không còn hợp lệ.
+     */
+    form.ward = ''
+    form.ward_code = null
+
+    wards.value = []
+
+    const selectedDistrict =
+        districts.value.find(
+            (district) => {
+                return (
+                    Number(
+                        district.DistrictID,
+                    ) ===
+                    Number(
+                        form.district_id,
+                    )
+                )
+            },
+        )
+
+    form.district =
+        selectedDistrict
+            ?.DistrictName ?? ''
+
+    if (!form.district_id) {
+        return
+    }
+
+    await loadWards(
+        form.district_id,
+    )
+}
+
+/*
+|--------------------------------------------------------------------------
+| Ward changed
+|--------------------------------------------------------------------------
+*/
+
+function handleWardChange() {
+    const selectedWard =
+        wards.value.find(
+            (ward) => {
+                return (
+                    String(
+                        ward.WardCode,
+                    ) ===
+                    String(
+                        form.ward_code,
+                    )
+                )
+            },
+        )
+
+    form.ward =
+        selectedWard
+            ?.WardName ?? ''
+}
+
+/*
+|--------------------------------------------------------------------------
+| Fetch addresses
+|--------------------------------------------------------------------------
+*/
 
 async function fetchAddresses() {
     isLoading.value = true
@@ -55,7 +321,7 @@ async function fetchAddresses() {
 
         addresses.value =
             Array.isArray(
-                response.data?.data
+                response.data?.data,
             )
                 ? response.data.data
                 : []
@@ -68,18 +334,40 @@ async function fetchAddresses() {
     }
 }
 
+/*
+|--------------------------------------------------------------------------
+| Reset form
+|--------------------------------------------------------------------------
+*/
+
 function resetForm() {
     form.recipient_name = ''
     form.phone = ''
+
     form.province = ''
+    form.province_id = null
+
     form.district = ''
+    form.district_id = null
+
     form.ward = ''
+    form.ward_code = null
+
     form.address_line = ''
     form.is_default = false
+
+    districts.value = []
+    wards.value = []
 
     editingAddress.value = null
     validationErrors.value = {}
 }
+
+/*
+|--------------------------------------------------------------------------
+| Create
+|--------------------------------------------------------------------------
+*/
 
 function openCreateForm() {
     resetForm()
@@ -93,7 +381,15 @@ function openCreateForm() {
     showForm.value = true
 }
 
-function openEditForm(address) {
+/*
+|--------------------------------------------------------------------------
+| Edit
+|--------------------------------------------------------------------------
+*/
+
+async function openEditForm(
+    address,
+) {
     editingAddress.value = address
 
     form.recipient_name =
@@ -105,17 +401,119 @@ function openEditForm(address) {
     form.province =
         address.province ?? ''
 
+    form.province_id =
+        address.province_id ??
+        address.ghn_province_id ??
+        null
+
     form.district =
         address.district ?? ''
 
+    form.district_id =
+        address.district_id ??
+        address.ghn_district_id ??
+        null
+
     form.ward =
         address.ward ?? ''
+
+    form.ward_code =
+        address.ward_code ??
+        address.ghn_ward_code ??
+        null
 
     form.address_line =
         address.address_line ?? ''
 
     form.is_default =
-        Boolean(address.is_default)
+        Boolean(
+            address.is_default,
+        )
+
+    /*
+     * Hỗ trợ dữ liệu địa chỉ cũ:
+     * nếu database chưa có province_id,
+     * thử tìm province bằng tên.
+     */
+    if (
+        !form.province_id &&
+        form.province
+    ) {
+        const matchedProvince =
+            provinces.value.find(
+                (province) => {
+                    return (
+                        province
+                            .ProvinceName ===
+                        form.province
+                    )
+                },
+            )
+
+        form.province_id =
+            matchedProvince
+                ?.ProvinceID ?? null
+    }
+
+    /*
+     * Phải load District trước khi
+     * có thể hiển thị District đang chọn.
+     */
+    if (form.province_id) {
+        await loadDistricts(
+            form.province_id,
+        )
+
+        if (
+            !form.district_id &&
+            form.district
+        ) {
+            const matchedDistrict =
+                districts.value.find(
+                    (district) => {
+                        return (
+                            district
+                                .DistrictName ===
+                            form.district
+                        )
+                    },
+                )
+
+            form.district_id =
+                matchedDistrict
+                    ?.DistrictID ??
+                null
+        }
+    }
+
+    /*
+     * Phải load Ward sau khi đã có District.
+     */
+    if (form.district_id) {
+        await loadWards(
+            form.district_id,
+        )
+
+        if (
+            !form.ward_code &&
+            form.ward
+        ) {
+            const matchedWard =
+                wards.value.find(
+                    (ward) => {
+                        return (
+                            ward.WardName ===
+                            form.ward
+                        )
+                    },
+                )
+
+            form.ward_code =
+                matchedWard
+                    ?.WardCode ??
+                null
+        }
+    }
 
     validationErrors.value = {}
     showForm.value = true
@@ -127,8 +525,15 @@ function closeForm() {
     }
 
     showForm.value = false
+
     resetForm()
 }
+
+/*
+|--------------------------------------------------------------------------
+| Submit
+|--------------------------------------------------------------------------
+*/
 
 async function submitAddress() {
     isSubmitting.value = true
@@ -144,14 +549,30 @@ async function submitAddress() {
         phone:
             form.phone.trim(),
 
+        /*
+         * Tên dùng hiển thị.
+         */
         province:
-            form.province.trim(),
+            form.province,
 
         district:
-            form.district.trim(),
+            form.district,
 
         ward:
-            form.ward.trim(),
+            form.ward,
+
+        /*
+         * ID/code GHN dùng để
+         * tính shipping.
+         */
+        province_id:
+            form.province_id,
+
+        district_id:
+            form.district_id,
+
+        ward_code:
+            form.ward_code,
 
         address_line:
             form.address_line.trim(),
@@ -181,6 +602,7 @@ async function submitAddress() {
             'Lưu địa chỉ thành công.'
 
         showForm.value = false
+
         resetForm()
 
         await fetchAddresses()
@@ -190,21 +612,32 @@ async function submitAddress() {
             422
         ) {
             validationErrors.value =
-                error.response?.data
+                error.response
+                    ?.data
                     ?.errors ?? {}
 
             return
         }
 
         errorMessage.value =
-            error.response?.data?.message ??
+            error.response
+                ?.data
+                ?.message ??
             'Không thể lưu địa chỉ.'
     } finally {
         isSubmitting.value = false
     }
 }
 
-async function makeDefault(address) {
+/*
+|--------------------------------------------------------------------------
+| Set default
+|--------------------------------------------------------------------------
+*/
+
+async function makeDefault(
+    address,
+) {
     if (
         address.is_default ||
         actionAddressId.value
@@ -231,14 +664,24 @@ async function makeDefault(address) {
         await fetchAddresses()
     } catch (error) {
         errorMessage.value =
-            error.response?.data?.message ??
+            error.response
+                ?.data
+                ?.message ??
             'Không thể đặt địa chỉ mặc định.'
     } finally {
         actionAddressId.value = null
     }
 }
 
-async function removeAddress(address) {
+/*
+|--------------------------------------------------------------------------
+| Delete
+|--------------------------------------------------------------------------
+*/
+
+async function removeAddress(
+    address,
+) {
     if (actionAddressId.value) {
         return
     }
@@ -271,15 +714,26 @@ async function removeAddress(address) {
         await fetchAddresses()
     } catch (error) {
         errorMessage.value =
-            error.response?.data?.message ??
+            error.response
+                ?.data
+                ?.message ??
             'Không thể xóa địa chỉ.'
     } finally {
         actionAddressId.value = null
     }
 }
 
-onMounted(() => {
-    fetchAddresses()
+/*
+|--------------------------------------------------------------------------
+| Mounted
+|--------------------------------------------------------------------------
+*/
+
+onMounted(async () => {
+    await Promise.all([
+        fetchAddresses(),
+        loadProvinces(),
+    ])
 })
 </script>
 
@@ -301,44 +755,28 @@ onMounted(() => {
                 </span>
             </div>
 
-            <button
-                type="button"
-                class="add-button"
-                @click="openCreateForm"
-            >
+            <button type="button" class="add-button" @click="openCreateForm">
                 <Plus :size="17" />
 
                 Thêm địa chỉ
             </button>
         </header>
 
-        <div
-            v-if="errorMessage"
-            class="alert alert-error"
-        >
+        <div v-if="errorMessage" class="alert alert-error">
             {{ errorMessage }}
         </div>
 
-        <div
-            v-if="successMessage"
-            class="alert alert-success"
-        >
+        <div v-if="successMessage" class="alert alert-success">
             {{ successMessage }}
         </div>
 
-        <div
-            v-if="isLoading"
-            class="state-box"
-        >
+        <div v-if="isLoading" class="state-box">
             Đang tải địa chỉ...
         </div>
 
-        <div
-            v-else-if="
-                addresses.length === 0
-            "
-            class="empty-state"
-        >
+        <div v-else-if="
+            addresses.length === 0
+        " class="empty-state">
             <MapPin :size="42" />
 
             <h3>
@@ -350,29 +788,18 @@ onMounted(() => {
                 thanh toán nhanh hơn.
             </p>
 
-            <button
-                type="button"
-                @click="openCreateForm"
-            >
+            <button type="button" @click="openCreateForm">
                 <Plus :size="17" />
 
                 Thêm địa chỉ đầu tiên
             </button>
         </div>
 
-        <section
-            v-else
-            class="address-list"
-        >
-            <article
-                v-for="address in addresses"
-                :key="address.id"
-                class="address-card"
-                :class="{
-                    default:
-                        address.is_default,
-                }"
-            >
+        <section v-else class="address-list">
+            <article v-for="address in addresses" :key="address.id" class="address-card" :class="{
+                default:
+                    address.is_default,
+            }">
                 <div class="address-main">
                     <div class="address-icon">
                         <MapPin :size="20" />
@@ -397,12 +824,9 @@ onMounted(() => {
                                 }}
                             </span>
 
-                            <span
-                                v-if="
-                                    address.is_default
-                                "
-                                class="default-badge"
-                            >
+                            <span v-if="
+                                address.is_default
+                            " class="default-badge">
                                 Mặc định
                             </span>
                         </div>
@@ -428,57 +852,39 @@ onMounted(() => {
                 </div>
 
                 <div class="address-actions">
-                    <button
-                        type="button"
-                        class="text-button"
-                        @click="
-                            openEditForm(
-                                address,
-                            )
-                        "
-                    >
+                    <button type="button" class="text-button" @click="
+                        openEditForm(
+                            address,
+                        )
+                        ">
                         <Pencil :size="15" />
 
                         Sửa
                     </button>
 
-                    <button
-                        v-if="
-                            !address.is_default
-                        "
-                        type="button"
-                        class="text-button danger"
-                        :disabled="
-                            actionAddressId ===
-                            address.id
-                        "
-                        @click="
+                    <button v-if="
+                        !address.is_default
+                    " type="button" class="text-button danger" :disabled="actionAddressId ===
+                        address.id
+                        " @click="
                             removeAddress(
                                 address,
                             )
-                        "
-                    >
+                            ">
                         <Trash2 :size="15" />
 
                         Xóa
                     </button>
 
-                    <button
-                        v-if="
-                            !address.is_default
-                        "
-                        type="button"
-                        class="default-button"
-                        :disabled="
-                            actionAddressId ===
-                            address.id
-                        "
-                        @click="
+                    <button v-if="
+                        !address.is_default
+                    " type="button" class="default-button" :disabled="actionAddressId ===
+                        address.id
+                        " @click="
                             makeDefault(
                                 address,
                             )
-                        "
-                    >
+                            ">
                         Đặt làm mặc định
                     </button>
                 </div>
@@ -486,11 +892,7 @@ onMounted(() => {
         </section>
 
         <!-- FORM MODAL -->
-        <div
-            v-if="showForm"
-            class="modal-backdrop"
-            @click.self="closeForm"
-        >
+        <div v-if="showForm" class="modal-backdrop" @click.self="closeForm">
             <section class="address-modal">
                 <header class="modal-header">
                     <div>
@@ -511,42 +913,29 @@ onMounted(() => {
                         </h3>
                     </div>
 
-                    <button
-                        type="button"
-                        class="close-button"
-                        @click="closeForm"
-                    >
+                    <button type="button" class="close-button" @click="closeForm">
                         <X :size="20" />
                     </button>
                 </header>
 
-                <form
-                    @submit.prevent="
-                        submitAddress
-                    "
-                >
+                <form @submit.prevent="
+                    submitAddress
+                ">
                     <div class="form-grid">
                         <div class="form-group">
                             <label>
                                 Người nhận
                             </label>
 
-                            <input
-                                v-model="
-                                    form
-                                        .recipient_name
-                                "
-                                type="text"
-                                placeholder="Nguyễn Văn A"
-                            >
+                            <input v-model="form
+                                .recipient_name
+                                " type="text" placeholder="Nguyễn Văn A">
 
-                            <small
-                                v-if="
-                                    validationErrors
-                                        .recipient_name
-                                        ?.[0]
-                                "
-                            >
+                            <small v-if="
+                                validationErrors
+                                    .recipient_name
+                                ?.[0]
+                            ">
                                 {{
                                     validationErrors
                                         .recipient_name[0]
@@ -559,20 +948,13 @@ onMounted(() => {
                                 Số điện thoại
                             </label>
 
-                            <input
-                                v-model="
-                                    form.phone
-                                "
-                                type="tel"
-                                placeholder="0901234567"
-                            >
+                            <input v-model="form.phone
+                                " type="tel" placeholder="0901234567">
 
-                            <small
-                                v-if="
-                                    validationErrors
-                                        .phone?.[0]
-                                "
-                            >
+                            <small v-if="
+                                validationErrors
+                                    .phone?.[0]
+                            ">
                                 {{
                                     validationErrors
                                         .phone[0]
@@ -585,13 +967,39 @@ onMounted(() => {
                                 Tỉnh / Thành phố
                             </label>
 
-                            <input
-                                v-model="
-                                    form.province
-                                "
-                                type="text"
-                                placeholder="TP. Hồ Chí Minh"
-                            >
+                            <select v-model.number="form.province_id
+                                " :disabled="isLoadingProvinces
+                                    " @change="
+                                        handleProvinceChange
+                                    ">
+                                <option :value="null">
+                                    {{
+                                        isLoadingProvinces
+                                            ? 'Đang tải...'
+                                            : 'Chọn Tỉnh / Thành phố'
+                                    }}
+                                </option>
+
+                                <option v-for="
+province in provinces
+            " :key="province.ProvinceID
+                " :value="province.ProvinceID
+                    ">
+                                    {{
+                                        province.ProvinceName
+                                    }}
+                                </option>
+                            </select>
+
+                            <small v-if="
+                                validationErrors
+                                    .province_id?.[0]
+                            ">
+                                {{
+                                    validationErrors
+                                        .province_id[0]
+                                }}
+                            </small>
                         </div>
 
                         <div class="form-group">
@@ -599,13 +1007,40 @@ onMounted(() => {
                                 Quận / Huyện
                             </label>
 
-                            <input
-                                v-model="
-                                    form.district
-                                "
-                                type="text"
-                                placeholder="Quận 1"
-                            >
+                            <select v-model.number="form.district_id
+                                " :disabled="!form.province_id ||
+                                    isLoadingDistricts
+                                    " @change="
+                handleDistrictChange
+            ">
+                                <option :value="null">
+                                    {{
+                                        isLoadingDistricts
+                                            ? 'Đang tải...'
+                                            : 'Chọn Quận / Huyện'
+                                    }}
+                                </option>
+
+                                <option v-for="
+district in districts
+            " :key="district.DistrictID
+                " :value="district.DistrictID
+                    ">
+                                    {{
+                                        district.DistrictName
+                                    }}
+                                </option>
+                            </select>
+
+                            <small v-if="
+                                validationErrors
+                                    .district_id?.[0]
+                            ">
+                                {{
+                                    validationErrors
+                                        .district_id[0]
+                                }}
+                            </small>
                         </div>
 
                         <div class="form-group">
@@ -613,46 +1048,58 @@ onMounted(() => {
                                 Phường / Xã
                             </label>
 
-                            <input
-                                v-model="
-                                    form.ward
-                                "
-                                type="text"
-                                placeholder="Phường Bến Nghé"
-                            >
+                            <select v-model="form.ward_code
+                                " :disabled="!form.district_id ||
+            isLoadingWards
+            " @change="
+            handleWardChange
+        ">
+                                <option :value="null">
+                                    {{
+                                        isLoadingWards
+                                            ? 'Đang tải...'
+                                    : 'Chọn Phường / Xã'
+                                    }}
+                                </option>
+
+                                <option v-for="
+ward in wards
+            " :key="ward.WardCode
+                " :value="ward.WardCode
+                ">
+                                    {{
+                                        ward.WardName
+                                    }}
+                                </option>
+                            </select>
+
+                            <small v-if="
+                                validationErrors
+                                    .ward_code?.[0]
+                            ">
+                                {{
+                                    validationErrors
+                                .ward_code[0]
+                                }}
+                            </small>
                         </div>
 
-                        <div
-                            class="form-group full-width"
-                        >
+                        <div class="form-group full-width">
                             <label>
                                 Địa chỉ cụ thể
                             </label>
 
-                            <input
-                                v-model="
-                                    form
-                                        .address_line
-                                "
-                                type="text"
-                                placeholder="123 Nguyễn Huệ"
-                            >
+                            <input v-model="form
+                                .address_line
+                                " type="text" placeholder="123 Nguyễn Huệ">
                         </div>
                     </div>
 
-                    <label
-                        class="default-checkbox"
-                    >
-                        <input
-                            v-model="
-                                form.is_default
-                            "
-                            type="checkbox"
-                            :disabled="
-                                editingAddress
-                                    ?.is_default
-                            "
-                        >
+                    <label class="default-checkbox">
+                        <input v-model="form.is_default
+                            " type="checkbox" :disabled="editingAddress
+                                ?.is_default
+                                ">
 
                         <span>
                             Đặt làm địa chỉ
@@ -661,24 +1108,13 @@ onMounted(() => {
                     </label>
 
                     <footer class="form-actions">
-                        <button
-                            type="button"
-                            class="cancel-button"
-                            :disabled="
-                                isSubmitting
-                            "
-                            @click="closeForm"
-                        >
+                        <button type="button" class="cancel-button" :disabled="isSubmitting
+                            " @click="closeForm">
                             Hủy
                         </button>
 
-                        <button
-                            type="submit"
-                            class="save-button"
-                            :disabled="
-                                isSubmitting
-                            "
-                        >
+                        <button type="submit" class="save-button" :disabled="isSubmitting
+                            ">
                             <Check :size="17" />
 
                             {{
@@ -799,7 +1235,7 @@ onMounted(() => {
     font-size: 14px;
 }
 
-.address-title > span {
+.address-title>span {
     color: #758279;
     font-size: 12px;
 }
@@ -980,7 +1416,8 @@ onMounted(() => {
     font-weight: 600;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
     width: 100%;
     height: 42px;
     box-sizing: border-box;
@@ -993,8 +1430,15 @@ onMounted(() => {
     font-size: 12px;
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-group select:focus {
     border-color: #24734a;
+}
+
+.form-group select:disabled {
+    cursor: not-allowed;
+    background: #f5f7f5;
+    color: #8a958e;
 }
 
 .form-group small {
@@ -1051,6 +1495,7 @@ button:disabled {
 }
 
 @media (max-width: 700px) {
+
     .page-header,
     .address-card {
         align-items: stretch;

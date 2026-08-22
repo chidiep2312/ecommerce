@@ -80,6 +80,11 @@ const accountItems = [
       //  routeName: 'seller-settings',
         icon: 'settings',
     },
+    {
+        label: 'Địa chỉ',
+        routeName: 'seller-address',
+        icon: 'settings',
+    },
 ]
 
 function isRouteActive(routeName) {

@@ -279,17 +279,14 @@ function getCustomerEmail() {
 
 function getCustomerPhone() {
     return (
-        order.value?.shipping_phone ??
-        order.value?.phone ??
-        order.value?.customer?.phone ??
+        order.value?.shipping.recipient.phone ??
         '--'
     )
 }
 
 function getShippingAddress() {
     return (
-        order.value?.shipping_address ??
-        order.value?.address ??
+         order.value?.shipping.recipient.address ??
         '--'
     )
 }

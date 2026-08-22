@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Models;
+
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Enums\ProductStatus;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,6 +20,10 @@ class Product extends Model
         'category_id',
         'brand_id',
         'name',
+        'weight',
+        'length',
+        'width',
+        'height',
         'slug',
         'sku',
         'price',
@@ -117,7 +122,7 @@ class Product extends Model
             'suspended_by'
         );
     }
- 
+
     public function wishlistedByUsers()
     {
         return $this->belongsToMany(

@@ -1,5 +1,14 @@
 import http from '@/api/http'
 
+export function createSellerProduct(
+    payload,
+) {
+    return http.post(
+        '/seller/products',
+        payload,
+    )
+} 
+
 export function getSellerProducts(
     params = {},
 ) {

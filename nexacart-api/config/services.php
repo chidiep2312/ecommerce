@@ -30,5 +30,43 @@ return [
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
+    'ghn' => [
+        'base_url' => env(
+            'GHN_BASE_URL',
+            'https://dev-online-gateway.ghn.vn'
+        ),
 
+        'token' => env('GHN_TOKEN'),
+
+        'shop_id' => env('GHN_SHOP_ID'),
+    ],
+    'vnpay' => [
+        'driver' => env(
+            'VNPAY_DRIVER',
+            'fake'
+        ),
+
+        'tmn_code' => env(
+            'VNPAY_TMN_CODE'
+        ),
+
+        'hash_secret' => env(
+            'VNPAY_HASH_SECRET'
+        ),
+
+        'fake_payment_url' => env(
+            'VNPAY_FAKE_PAYMENT_URL'
+        ),
+
+        'return_url' => env(
+            'VNPAY_RETURN_URL'
+        ),
+
+        'ipn_url' => env(
+            'VNPAY_IPN_URL'
+        ),
+        'frontend_result_url' => env(
+            'FRONTEND_PAYMENT_RESULT_URL'
+        ),
+    ],
 ];

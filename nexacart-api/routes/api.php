@@ -25,8 +25,9 @@ use App\Http\Controllers\Api\V1\CustomerDashboardController;
 use App\Http\Controllers\Api\V1\AddressController;
 use App\Http\Controllers\Api\V1\WishlistController;
 use App\Http\Controllers\Api\V1\ShopController;
-
-
+use App\Http\Controllers\Api\V1\ShippingController;
+use App\Http\Controllers\Api\V1\SellerPickupAddressController;
+use App\Http\Controllers\Api\V1\PaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -84,6 +85,44 @@ Route::prefix('v1')->group(function () {
             'index',
         ]
     );
+    Route::get(
+        '/payments/vnpay/ipn',
+        [PaymentController::class, 'vnpayIpn']
+    );
+    Route::get(
+        '/payments/vnpay/return',
+        [
+            PaymentController::class,
+            'vnpayReturn',
+        ]
+    );
+
+    Route::prefix('shipping')
+        ->group(function () {
+            Route::get(
+                '/provinces',
+                [
+                    ShippingController::class,
+                    'provinces',
+                ]
+            );
+
+            Route::get(
+                '/districts/{provinceId}',
+                [
+                    ShippingController::class,
+                    'districts',
+                ]
+            );
+
+            Route::get(
+                '/wards/{districtId}',
+                [
+                    ShippingController::class,
+                    'wards',
+                ]
+            );
+        });
     /*
     |--------------------------------------------------------------------------
     | Public authentication routes
@@ -330,6 +369,29 @@ Route::prefix('v1')->group(function () {
                 'destroy',
             ]
         );
+
+        Route::post(
+            '/shipping/options',
+            [
+                ShippingController::class,
+                'options',
+            ],
+        );
+        Route::post(
+            '/orders/{order}/payments/vnpay',
+            [
+                PaymentController::class,
+                'store',
+            ]
+        );
+        Route::middleware('auth:sanctum')
+            ->get(
+                '/payments/{providerOrderId}/status',
+                [
+                    PaymentController::class,
+                    'status',
+                ]
+            );
     });
 
 
@@ -443,6 +505,44 @@ Route::prefix('v1')->group(function () {
                 ShopController::class,
                 'updateProfile',
             ]
+        );
+        Route::get(
+            '/pickup-addresses',
+            [
+                SellerPickupAddressController::class,
+                'index',
+            ],
+        );
+
+        Route::post(
+            '/pickup-addresses',
+            [
+                SellerPickupAddressController::class,
+                'store',
+            ],
+        );
+
+        Route::post(
+            '/pickup-addresses/{pickupAddress}/sync-ghn',
+            [
+                SellerPickupAddressController::class,
+                'sync',
+            ],
+        );
+
+        Route::patch(
+            '/pickup-addresses/{pickupAddress}/default',
+            [
+                SellerPickupAddressController::class,
+                'setDefault',
+            ],
+        );
+        Route::post(
+            '/shipping/options',
+            [
+                ShippingController::class,
+                'options',
+            ],
         );
     });
 

@@ -19,6 +19,7 @@ import {
     computed,
     onMounted,
     ref,
+    watch,
 } from 'vue'
 
 import {
@@ -28,7 +29,9 @@ import {
 import {
     getCustomerAddresses,
 } from '@/api/address'
-
+import {
+    createVnpayPayment,
+} from '@/api/payment'
 import AddressCard
     from '@/components/customer/AddressCard.vue'
 
@@ -37,11 +40,16 @@ import {
 } from '@/api/orders'
 
 import {
+    getShippingOptions,
+} from '@/api/shipping'
+
+import {
     useCartStore,
 } from '@/stores/cart'
 import {
     validateVoucher,
 } from '@/api/voucher'
+
 const CHECKOUT_CONTEXT_KEY =
     'nexacart_checkout_context'
 
@@ -58,6 +66,18 @@ const addresses = ref([])
 const isAddressLoading = ref(false)
 
 const selectedAddressId = ref(null)
+
+const shippingOptions = ref([])
+
+const selectedShippingServiceId =
+    ref(null)
+
+const isShippingLoading = ref(false)
+
+const shippingError = ref('')
+
+let shippingRequestVersion = 0
+
 const voucherCode = ref('')
 
 const appliedVoucher = ref(null)
@@ -69,35 +89,49 @@ const voucherError = ref('')
 const voucherSuccess = ref('')
 
 const isVoucherLoading = ref(false)
+
+const selectedShippingOption =
+    computed(() => {
+        return (
+            shippingOptions.value.find(
+                option => {
+                    return (
+                        Number(
+                            option.service_id,
+                        ) ===
+                        Number(
+                            selectedShippingServiceId
+                                .value,
+                        )
+                    )
+                },
+            ) ?? null
+        )
+    })
+
 async function applyVoucher() {
     if (isVoucherLoading.value) {
         return
     }
-
     const code =
-        voucherCode.value
-            .trim()
-            .toUpperCase()
+        voucherCode.value.trim().toUpperCase()
 
     if (!code) {
-        voucherError.value =
-            'Vui lòng nhập mã voucher.'
-
+        voucherError.value = 'Vui lòng nhập mã voucher.'
         return
     }
 
     if (
         checkoutSubtotal.value <= 0
     ) {
-        voucherError.value =
-            'Không có sản phẩm để áp dụng voucher.'
-
+        voucherError.value = 'Không có sản phẩm để áp dụng voucher.'
         return
     }
 
     isVoucherLoading.value = true
 
     voucherError.value = ''
+
     voucherSuccess.value = ''
 
     try {
@@ -109,17 +143,13 @@ async function applyVoucher() {
                     checkoutSubtotal.value,
             })
 
-        const data =
-            response.data?.data
+        const data = response.data?.data
 
-        appliedVoucher.value =
-            data?.voucher ?? null
+        appliedVoucher.value = data?.voucher ?? null
 
         voucherDiscount.value =
             Number(
-                data
-                    ?.discount_amount ??
-                0,
+                data?.discount_amount ?? 0,
             )
 
         voucherCode.value =
@@ -155,8 +185,10 @@ function removeVoucher() {
     voucherDiscount.value = 0
 
     voucherError.value = ''
+
     voucherSuccess.value = ''
 }
+
 const selectedAddress = computed(() => {
     return (
         addresses.value.find(
@@ -202,7 +234,6 @@ async function fetchAddresses() {
             )
                 ? response.data.data
                 : []
-
 
         const defaultAddress =
             addresses.value.find(
@@ -408,9 +439,14 @@ const checkoutSubtotal =
     })
 
 
-const shippingFee = computed(() => {
-    return 0
-})
+const shippingFee =
+    computed(() => {
+        return Number(
+            selectedShippingOption
+                .value
+                ?.shipping_fee ?? 0,
+        )
+    })
 
 const grandTotal = computed(() => {
     return Math.max(
@@ -446,25 +482,147 @@ const checkoutUnavailableMessage =
 
         return ''
     })
+async function loadShippingOptions() {
 
-const canSubmit = computed(() => {
-    return (
-        Boolean(
-            checkoutContext.value,
-        ) &&
-        checkoutItems.value.length > 0 &&
-        !hasMissingCheckoutItems.value &&
-        selectedSellerId.value !== null &&
-        Boolean(
-            selectedAddress.value,
-        ) &&
-        paymentMethod.value ===
-        'cod' &&
-        !isAddressLoading.value &&
-        !isSubmitting.value
-    )
-})
+    const requestVersion =
+        ++shippingRequestVersion
 
+    shippingError.value = ''
+
+    shippingOptions.value = []
+
+    selectedShippingServiceId.value =
+        null
+
+    const context =
+        checkoutContext.value
+
+    if (
+        !context ||
+        !selectedAddressId.value ||
+        !selectedSellerId.value ||
+        hasMissingCheckoutItems.value
+    ) {
+        return
+    }
+
+    isShippingLoading.value = true
+
+    try {
+        const response =
+            await getShippingOptions({
+                seller_id:
+                    selectedSellerId.value,
+
+                address_id:
+                    selectedAddressId.value,
+
+                cart_item_ids:
+                    context.cart_item_ids,
+            })
+
+        if (
+            requestVersion !==
+            shippingRequestVersion
+        ) {
+            return
+        }
+
+        const options =
+            Array.isArray(
+                response.data?.data,
+            )
+                ? response.data.data
+                : []
+
+        shippingOptions.value =
+            options
+
+        selectedShippingServiceId.value =
+            options[0]?.service_id ??
+            null
+
+        if (options.length === 0) {
+            shippingError.value =
+                'Không có phương thức vận chuyển phù hợp.'
+        }
+    } catch (error) {
+        if (
+            requestVersion !==
+            shippingRequestVersion
+        ) {
+            return
+        }
+
+        shippingOptions.value = []
+
+        selectedShippingServiceId.value =
+            null
+
+        shippingError.value =
+            error.response?.data
+                ?.message ??
+            getFirstValidationError(
+                error.response?.data
+                    ?.errors,
+            ) ??
+            'Không thể tính phí vận chuyển.'
+
+        console.error(
+            'Không thể tải phương thức vận chuyển:',
+            error,
+        )
+    } finally {
+        if (
+            requestVersion ===
+            shippingRequestVersion
+        ) {
+            isShippingLoading.value =
+                false
+        }
+    }
+}
+const canSubmit =
+    computed(() => {
+        const isPaymentMethodValid =
+            [
+                'cod',
+                'vnpay',
+            ].includes(
+                paymentMethod.value,
+            )
+
+        return (
+            Boolean(
+                checkoutContext.value,
+            ) &&
+
+            checkoutItems.value.length >
+            0 &&
+
+            !hasMissingCheckoutItems.value &&
+
+            selectedSellerId.value !==
+            null &&
+
+            Boolean(
+                selectedAddress.value,
+            ) &&
+
+            Boolean(
+                selectedShippingOption
+                    .value,
+            ) &&
+
+            isPaymentMethodValid &&
+
+            !isAddressLoading.value &&
+
+            !isShippingLoading.value &&
+
+            !isSubmitting.value
+        )
+    })
 function formatPrice(value) {
     return new Intl.NumberFormat(
         'vi-VN',
@@ -483,10 +641,7 @@ function selectAddress(address) {
         address.id
 }
 
-/*
- * Tạm thời chuyển sang trang quản lý
- * địa chỉ thay vì console.log.
- */
+
 function editAddress() {
     router.push({
         name: 'customer-addresses',
@@ -518,7 +673,15 @@ function buildOrderPayload() {
             'Vui lòng chọn địa chỉ nhận hàng.',
         )
     }
+    const shippingOption =
+        selectedShippingOption.value
 
+
+    if (!shippingOption) {
+        throw new Error(
+            'Vui lòng chọn phương thức vận chuyển.',
+        )
+    }
     return {
         seller_id:
             context.seller_id,
@@ -528,6 +691,13 @@ function buildOrderPayload() {
 
         address_id:
             address.id,
+
+        shipping_provider:
+            shippingOption.provider,
+
+        shipping_service_id:
+            shippingOption.service_id,
+
 
         idempotency_key:
             context.idempotency_key,
@@ -627,12 +797,7 @@ function handleCheckoutError(error) {
         )
 
     if (isNetworkError) {
-        /*
-         * Giữ checkoutContext.
-         *
-         * Request retry sẽ gửi lại cùng
-         * idempotency_key.
-         */
+
         submitError.value =
             'Không nhận được phản hồi từ máy chủ. Bạn có thể thử lại mà không bị tạo trùng đơn.'
 
@@ -644,7 +809,22 @@ function handleCheckoutError(error) {
         error.message ??
         'Không thể tạo đơn hàng. Vui lòng thử lại.'
 }
+watch(
+    () => {
+        return [
+            selectedAddressId.value,
 
+            selectedSellerId.value,
+
+            checkoutContext.value
+                ?.cart_item_ids
+                ?.join('|') ?? '',
+        ]
+    },
+    () => {
+        loadShippingOptions()
+    },
+)
 async function submitOrder() {
     if (!canSubmit.value) {
         return
@@ -657,6 +837,10 @@ async function submitOrder() {
         const payload =
             buildOrderPayload()
 
+        /*
+         * Bước 1:
+         * Tạo Order trước.
+         */
         const response =
             await createOrder(
                 payload,
@@ -667,9 +851,18 @@ async function submitOrder() {
             response.data?.data ??
             response.data
 
+        const orderId =
+            order?.id
+
         const orderCode =
             order?.order_code ??
             order?.code
+
+        if (!orderId) {
+            throw new Error(
+                'Không nhận được ID đơn hàng từ máy chủ.',
+            )
+        }
 
         if (!orderCode) {
             throw new Error(
@@ -677,9 +870,12 @@ async function submitOrder() {
             )
         }
 
-
+        /*
+         * Bước 2:
+         * Order đã được tạo nên có thể
+         * refresh cart.
+         */
         await cartStore.fetchCart()
-
 
         sessionStorage.removeItem(
             CHECKOUT_CONTEXT_KEY,
@@ -687,6 +883,43 @@ async function submitOrder() {
 
         checkoutContext.value = null
 
+        /*
+         * Bước 3:
+         * Nếu VNPay:
+         * tạo Payment rồi redirect sang
+         * VNPay Fake.
+         */
+        if (
+            paymentMethod.value ===
+            'vnpay'
+        ) {
+            const paymentResponse =
+                await createVnpayPayment(
+                    orderId,
+                )
+
+            const paymentUrl =
+                paymentResponse
+                    .data
+                    ?.data
+                    ?.payment_url
+
+            if (!paymentUrl) {
+                throw new Error(
+                    'Không nhận được đường dẫn thanh toán VNPay.',
+                )
+            }
+
+            window.location.href =
+                paymentUrl
+
+            return
+        }
+
+        /*
+         * COD:
+         * Không cần payment gateway.
+         */
         await router.replace({
             name: 'order-success',
 
@@ -700,7 +933,6 @@ async function submitOrder() {
         isSubmitting.value = false
     }
 }
-
 onMounted(async () => {
 
     if (
@@ -906,6 +1138,94 @@ onMounted(async () => {
                 <section class="checkout-card">
                     <header class="checkout-card__header">
                         <div>
+                            <Truck :size="20" />
+
+                            <div>
+                                <h2>
+                                    Phương thức vận chuyển
+                                </h2>
+
+                                <p>
+                                    Chọn dịch vụ giao hàng
+                                    cho đơn hàng.
+                                </p>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div class="shipping-options">
+                        <div v-if="isShippingLoading" class="shipping-state">
+                            Đang tính phí vận chuyển...
+                        </div>
+
+                        <div v-else-if="shippingError" class="shipping-state shipping-state--error">
+                            {{ shippingError }}
+                        </div>
+
+                        <div v-else-if="
+                            shippingOptions.length ===
+                            0
+                        " class="shipping-state">
+                            Chọn địa chỉ nhận hàng để
+                            xem phương thức vận chuyển.
+                        </div>
+
+                        <label v-for="
+option in shippingOptions
+            " v-else :key="`${option.provider}-${option.service_id}`
+                " class="shipping-option" :class="{
+                    'shipping-option--selected':
+                        Number(
+                            selectedShippingServiceId,
+                        ) ===
+                        Number(
+                            option.service_id,
+                        ),
+                }">
+                            <input v-model="selectedShippingServiceId
+                                " type="radio" name="shipping-service" :value="option.service_id
+                                    ">
+
+                            <span class="shipping-option__control">
+                                <Check v-if="
+                                    Number(
+                                        selectedShippingServiceId,
+                                    ) ===
+                                    Number(
+                                        option.service_id,
+                                    )
+                                " :size="13" />
+                            </span>
+
+                            <span class="shipping-option__icon">
+                                <Truck :size="21" />
+                            </span>
+
+                            <span class="shipping-option__content">
+                                <strong>
+                                    {{
+                                        option.service_name
+                                    }}
+                                </strong>
+
+                                <span>
+                                    Giao hàng qua GHN
+                                </span>
+                            </span>
+
+                            <strong class="shipping-option__price">
+                                {{
+                                    formatPrice(
+                                        option.shipping_fee,
+                                    )
+                                }}
+                            </strong>
+                        </label>
+                    </div>
+                </section>
+                <section class="checkout-card">
+                    <header class="checkout-card__header">
+                        <div>
                             <TicketPercent :size="20" />
 
                             <div>
@@ -1036,8 +1356,18 @@ onMounted(async () => {
                             </span>
                         </label>
 
-                        <div class="payment-method payment-method--disabled">
-                            <span class="payment-method__control" />
+                        <label class="payment-method" :class="{
+                            'payment-method--selected':
+                                paymentMethod === 'vnpay',
+                        }">
+                            <input v-model="paymentMethod" type="radio" value="vnpay" name="payment-method">
+
+                            <span class="payment-method__control">
+                                <Check v-if="
+                                    paymentMethod ===
+                                    'vnpay'
+                                " :size="13" />
+                            </span>
 
                             <span class="payment-method__icon">
                                 <CreditCard :size="22" />
@@ -1045,19 +1375,15 @@ onMounted(async () => {
 
                             <span class="payment-method__content">
                                 <strong>
-                                    Thanh toán trực tuyến
+                                    Thanh toán qua VNPay
                                 </strong>
 
                                 <span>
-                                    VNPay, MoMo và thẻ sẽ
-                                    được bổ sung sau.
+                                    Thanh toán trực tuyến qua
+                                    cổng VNPay.
                                 </span>
                             </span>
-
-                            <span class="payment-method__coming">
-                                Sắp có
-                            </span>
-                        </div>
+                        </label>
                     </div>
                 </section>
 
@@ -1165,7 +1491,19 @@ onMounted(async () => {
                         <dt>Phí vận chuyển</dt>
 
                         <dd>
-                            <span v-if="shippingFee === 0" class="checkout-summary__free">
+                            <span v-if="isShippingLoading">
+                                Đang tính...
+                            </span>
+
+                            <span v-else-if="
+                                !selectedShippingOption
+                            ">
+                                Chưa xác định
+                            </span>
+
+                            <span v-else-if="
+                                shippingFee === 0
+                            " class="checkout-summary__free">
                                 Miễn phí
                             </span>
 
@@ -1275,7 +1613,7 @@ onMounted(async () => {
     color: var(--color-primary-700);
 }
 
-.breadcrumb > span {
+.breadcrumb>span {
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -1351,8 +1689,7 @@ onMounted(async () => {
 .checkout-layout {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr)
-        360px;
+        minmax(0, 1fr) 360px;
     gap: 28px;
     align-items: start;
 }
@@ -1384,14 +1721,14 @@ onMounted(async () => {
     border-bottom: 1px solid var(--color-border);
 }
 
-.checkout-card__header > div {
+.checkout-card__header>div {
     display: flex;
     min-width: 0;
     align-items: center;
     gap: 12px;
 }
 
-.checkout-card__header > div > svg {
+.checkout-card__header>div>svg {
     flex-shrink: 0;
     color: var(--color-primary-700);
 }
@@ -1458,9 +1795,7 @@ onMounted(async () => {
 .checkout-product {
     display: grid;
     grid-template-columns:
-        82px
-        minmax(0, 1fr)
-        auto;
+        82px minmax(0, 1fr) auto;
     gap: 16px;
     align-items: center;
     padding: 18px 20px;
@@ -1523,7 +1858,7 @@ onMounted(async () => {
     color: var(--color-primary-700);
 }
 
-.checkout-product__information > span {
+.checkout-product__information>span {
     color: var(--color-text-muted);
     font-size: 11px;
 }
@@ -1556,8 +1891,7 @@ onMounted(async () => {
 .voucher-input-row {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr)
-        110px;
+        minmax(0, 1fr) 110px;
     gap: 10px;
 }
 
@@ -1593,8 +1927,7 @@ onMounted(async () => {
     border-color: var(--color-primary-500);
     background: var(--color-white);
     box-shadow:
-        0 0 0 3px
-        rgb(36 115 74 / 10%);
+        0 0 0 3px rgb(36 115 74 / 10%);
 }
 
 .voucher-input-row input:disabled {
@@ -1603,7 +1936,7 @@ onMounted(async () => {
     background: var(--color-gray-50);
 }
 
-.voucher-input-row > button {
+.voucher-input-row>button {
     display: inline-flex;
     min-width: 110px;
     height: 42px;
@@ -1624,26 +1957,23 @@ onMounted(async () => {
         color var(--transition-fast);
 }
 
-.voucher-input-row
-> button:hover:not(:disabled) {
+.voucher-input-row>button:hover:not(:disabled) {
     background: var(--color-primary-800);
     border-color: var(--color-primary-800);
 }
 
-.voucher-input-row > button:disabled {
+.voucher-input-row>button:disabled {
     cursor: not-allowed;
     opacity: 0.5;
 }
 
-.voucher-input-row
-> .voucher-remove-button {
+.voucher-input-row>.voucher-remove-button {
     color: var(--color-danger);
     background: var(--color-white);
     border-color: #e2b9b9;
 }
 
-.voucher-input-row
-> .voucher-remove-button:hover:not(:disabled) {
+.voucher-input-row>.voucher-remove-button:hover:not(:disabled) {
     color: #8d3030;
     background: #fff4f4;
     border-color: #d49a9a;
@@ -1672,27 +2002,24 @@ onMounted(async () => {
     border-radius: var(--radius-md);
 }
 
-.voucher-applied > div {
+.voucher-applied>div {
     display: flex;
     min-width: 0;
     align-items: center;
     gap: 10px;
 }
 
-.voucher-applied > div > svg {
+.voucher-applied>div>svg {
     flex: 0 0 auto;
 }
 
-.voucher-applied > div > div {
+.voucher-applied>div>div {
     display: grid;
     min-width: 0;
     gap: 3px;
 }
 
-.voucher-applied
-> div
-> div
-> strong {
+.voucher-applied>div>div>strong {
     overflow: hidden;
     color: var(--color-primary-700);
     font-size: 12px;
@@ -1702,16 +2029,12 @@ onMounted(async () => {
     white-space: nowrap;
 }
 
-.voucher-applied
-> div
-> div
-> span {
+.voucher-applied>div>div>span {
     color: var(--color-text-muted);
     font-size: 10px;
 }
 
-.voucher-applied
-> strong {
+.voucher-applied>strong {
     flex: 0 0 auto;
     color: var(--color-success);
     font-size: 13px;
@@ -1732,10 +2055,7 @@ onMounted(async () => {
     position: relative;
     display: grid;
     grid-template-columns:
-        auto
-        auto
-        minmax(0, 1fr)
-        auto;
+        auto auto minmax(0, 1fr) auto;
     gap: 13px;
     min-height: 78px;
     align-items: center;
@@ -1749,13 +2069,11 @@ onMounted(async () => {
         background-color var(--transition-fast);
 }
 
-.payment-method:hover:not(
-    .payment-method--disabled
-) {
+.payment-method:hover:not(.payment-method--disabled) {
     border-color: var(--color-primary-200);
 }
 
-.payment-method > input {
+.payment-method>input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
@@ -1782,8 +2100,7 @@ onMounted(async () => {
     border-radius: 50%;
 }
 
-.payment-method--selected
-.payment-method__control {
+.payment-method--selected .payment-method__control {
     background: var(--color-primary-700);
     border-color: var(--color-primary-700);
 }
@@ -1863,11 +2180,10 @@ onMounted(async () => {
     background: var(--color-white);
     border-color: var(--color-primary-500);
     box-shadow:
-        0 0 0 4px
-        rgb(36 115 74 / 10%);
+        0 0 0 4px rgb(36 115 74 / 10%);
 }
 
-.order-note > span {
+.order-note>span {
     position: absolute;
     right: 34px;
     bottom: 31px;
@@ -1918,7 +2234,7 @@ onMounted(async () => {
     border-radius: var(--radius-md);
 }
 
-.checkout-summary__address > span {
+.checkout-summary__address>span {
     color: var(--color-text-muted);
     font-size: 10px;
     text-transform: uppercase;
@@ -1943,7 +2259,7 @@ onMounted(async () => {
     padding: 2px 20px 20px;
 }
 
-.checkout-summary__details > div {
+.checkout-summary__details>div {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2079,15 +2395,11 @@ onMounted(async () => {
 .place-order-button__spinner {
     width: 18px;
     height: 18px;
-    border: 2px solid
-        rgb(255 255 255 / 35%);
+    border: 2px solid rgb(255 255 255 / 35%);
     border-top-color: var(--color-white);
     border-radius: 50%;
     animation:
-        checkout-spin
-        700ms
-        linear
-        infinite;
+        checkout-spin 700ms linear infinite;
 }
 
 .checkout-summary__agreement {
@@ -2264,7 +2576,7 @@ onMounted(async () => {
         padding: 15px;
     }
 
-    .checkout-card__header > div {
+    .checkout-card__header>div {
         align-items: flex-start;
     }
 
@@ -2280,8 +2592,7 @@ onMounted(async () => {
 
     .checkout-product {
         grid-template-columns:
-            72px
-            minmax(0, 1fr);
+            72px minmax(0, 1fr);
         gap: 12px;
         padding: 15px;
     }
@@ -2304,7 +2615,7 @@ onMounted(async () => {
         grid-template-columns: 1fr;
     }
 
-    .voucher-input-row > button {
+    .voucher-input-row>button {
         width: 100%;
     }
 
@@ -2314,7 +2625,7 @@ onMounted(async () => {
         gap: 10px;
     }
 
-    .voucher-applied > strong {
+    .voucher-applied>strong {
         padding-left: 26px;
     }
 
@@ -2324,9 +2635,7 @@ onMounted(async () => {
 
     .payment-method {
         grid-template-columns:
-            auto
-            auto
-            minmax(0, 1fr);
+            auto auto minmax(0, 1fr);
         padding: 13px;
     }
 
@@ -2339,7 +2648,7 @@ onMounted(async () => {
         padding: 15px;
     }
 
-    .order-note > span {
+    .order-note>span {
         right: 28px;
         bottom: 26px;
     }
@@ -2350,16 +2659,12 @@ onMounted(async () => {
 
     .checkout-summary__details {
         padding:
-            2px
-            15px
-            15px;
+            2px 15px 15px;
     }
 
     .checkout-summary__notice {
         margin:
-            0
-            15px
-            15px;
+            0 15px 15px;
     }
 
     .checkout-summary__total {
@@ -2375,23 +2680,18 @@ onMounted(async () => {
 
     .checkout-error {
         margin:
-            0
-            15px
-            15px;
+            0 15px 15px;
     }
 
     .place-order-button {
         width: calc(100% - 30px);
         margin:
-            0
-            15px;
+            0 15px;
     }
 
     .checkout-summary__agreement {
         margin:
-            14px
-            15px
-            0;
+            14px 15px 0;
     }
 
     .checkout-benefits {
@@ -2406,5 +2706,99 @@ onMounted(async () => {
     .empty-checkout h2 {
         font-size: 19px;
     }
+}
+
+.shipping-options {
+    display: grid;
+    gap: 12px;
+    padding: 20px;
+}
+
+.shipping-state {
+    padding: 16px;
+    color: var(--color-text-muted);
+    background: var(--color-gray-50);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 12px;
+}
+
+.shipping-state--error {
+    color: var(--color-danger);
+    background: #fff4f4;
+    border-color: #e2b9b9;
+}
+
+.shipping-option {
+    position: relative;
+    display: grid;
+    grid-template-columns:
+        auto auto minmax(0, 1fr) auto;
+    gap: 13px;
+    min-height: 74px;
+    align-items: center;
+    padding: 14px;
+    cursor: pointer;
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.shipping-option--selected {
+    background: var(--color-primary-50);
+    border-color: var(--color-primary-500);
+}
+
+.shipping-option>input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.shipping-option__control {
+    display: grid;
+    width: 19px;
+    height: 19px;
+    place-items: center;
+    color: var(--color-white);
+    background: var(--color-white);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
+}
+
+.shipping-option--selected .shipping-option__control {
+    background: var(--color-primary-700);
+    border-color: var(--color-primary-700);
+}
+
+.shipping-option__icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    color: var(--color-primary-700);
+    background: var(--color-primary-100);
+    border-radius: var(--radius-md);
+}
+
+.shipping-option__content {
+    display: grid;
+    gap: 5px;
+}
+
+.shipping-option__content strong {
+    color: var(--color-text-primary);
+    font-size: 13px;
+}
+
+.shipping-option__content span {
+    color: var(--color-text-muted);
+    font-size: 11px;
+}
+
+.shipping-option__price {
+    color: var(--color-primary-700);
+    font-size: 13px;
+    white-space: nowrap;
 }
 </style>

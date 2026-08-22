@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\V1\FakeVnpayController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,3 +17,19 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get(
+    '/fake-vnpay/pay',
+    [
+        FakeVnpayController::class,
+        'show',
+    ]
+)->name('fake-vnpay.pay');
+
+Route::post(
+    '/fake-vnpay/pay',
+    [
+        FakeVnpayController::class,
+        'process',
+    ]
+)->name('fake-vnpay.process');

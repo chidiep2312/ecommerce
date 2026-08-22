@@ -1,9 +1,11 @@
 <?php
 
 namespace App\Services;
-
+//use App\Services\ShippingService;
 use App\Enums\OrderStatus;
 use App\Enums\ProductStatus;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use App\Exceptions\EmptyCartException;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvalidVoucherException;
@@ -11,147 +13,162 @@ use App\Exceptions\ProductUnavailableException;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\SellerPickupAddress;
 use App\Models\User;
 use App\Models\Voucher;
+use App\Support\Money;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Enums\UserRole;
-use App\Enums\UserStatus;
-use App\Support\Money;
+use Illuminate\Validation\ValidationException;
 
 class CheckoutService
 {
     public function __construct(
-        private readonly VoucherService $voucherService
-    ) {}
+        private readonly VoucherService $voucherService,
+        private readonly ShippingService $shippingService,
+        private readonly ShippingPackageBuilder $packageBuilder,
+    ) {
+    }
 
-    public function checkout(
-        User $user,
-        array $data
-    ): Order {
-        $existingOrder = Order::query()
-            ->where('user_id', $user->id)
-            ->where(
-                'idempotency_key',
-                $data['idempotency_key']
-            )
-            ->first();
+    public function checkout(User $user, array $data): Order
+    {
+        $existingOrder = $this->findExistingOrder(
+            $user,
+            $data['idempotency_key'],
+        );
 
-        if ($existingOrder !== null) {
-            return $existingOrder->load([
-                'items',
-                'voucher',
-                'customer:id,name,email',
-                'seller:id,name,email',
+        if ($existingOrder) {
+            return $this->loadOrder($existingOrder);
+        }
+
+        $shippingQuote = $this->shippingService->quoteSelectedService(
+            customer: $user,
+            sellerId: (int) $data['seller_id'],
+            addressId: (int) $data['address_id'],
+            cartItemIds: $data['cart_item_ids'],
+            serviceId: (int) $data['shipping_service_id'],
+        );
+
+        if (
+            ($data['shipping_provider'] ?? null)
+            !== $shippingQuote['provider']
+        ) {
+            throw ValidationException::withMessages([
+                'shipping_provider' => [
+                    'Đơn vị vận chuyển không hợp lệ.',
+                ],
             ]);
         }
 
-        return DB::transaction(function () use ($user, $data) {
-            /*
-             * Khóa giỏ hàng để tránh hai request checkout
-             * cùng một giỏ hàng tại cùng một thời điểm.
-             */
+        return DB::transaction(function () use (
+            $user,
+            $data,
+            $shippingQuote,
+        ) {
+          
             $cart = Cart::query()
                 ->where('user_id', $user->id)
                 ->lockForUpdate()
                 ->first();
 
-            $existingOrder = Order::query()
-                ->where('user_id', $user->id)
-                ->where(
-                    'idempotency_key',
-                    $data['idempotency_key']
-                )
-                ->first();
+         
+            $existingOrder = $this->findExistingOrder(
+                $user,
+                $data['idempotency_key'],
+            );
 
-            if ($existingOrder !== null) {
-                return $existingOrder->load([
-                    'items',
-                    'voucher',
-                    'customer:id,name,email',
-                    'seller:id,name,email',
-                ]);
+            if ($existingOrder) {
+                return $this->loadOrder($existingOrder);
             }
-            if ($cart === null) {
+
+            if (!$cart) {
                 throw new EmptyCartException(
-                    'Giỏ hàng đang trống.'
+                    'Giỏ hàng đang trống.',
                 );
             }
 
-            /*
-             * Chỉ lấy CartItem thuộc Seller mà Customer
-             * đang muốn checkout.
-             *
-             * Một lần checkout tạo một Order cho một Seller.
-             */
-            $requestedCartItemIds = collect(
-                $data['cart_item_ids']
-            )
-                ->map(
-                    fn($cartItemId) =>
-                    (int) $cartItemId
-                )
-                ->unique()
-                ->sort()
-                ->values();
+            $deliveryAddress = $user
+                ->addresses()
+                ->whereKey($data['address_id'])
+                ->lockForUpdate()
+                ->first();
 
+            if (!$deliveryAddress) {
+                throw new ProductUnavailableException(
+                    'Địa chỉ nhận hàng không hợp lệ.',
+                );
+            }
+
+            $this->assertDeliveryAddressUnchanged(
+                $deliveryAddress,
+                $shippingQuote,
+            );
+
+            $requestedCartItemIds = $this->normalizeCartItemIds(
+                $data['cart_item_ids'],
+            );
+
+            if ($requestedCartItemIds->isEmpty()) {
+                throw new EmptyCartException(
+                    'Không có sản phẩm để thanh toán.',
+                );
+            }
+
+          
             $cartItems = $cart->items()
-                ->whereIn(
-                    'id',
-                    $requestedCartItemIds
-                )
+                ->whereIn('id', $requestedCartItemIds)
                 ->whereHas(
                     'product',
                     function ($query) use ($data) {
                         $query->where(
                             'seller_id',
-                            (int) $data['seller_id']
+                            (int) $data['seller_id'],
                         );
-                    }
+                    },
                 )
+                ->orderBy('id')
+                ->lockForUpdate()
                 ->get();
 
             if (
-                $cartItems->count() !==
-                $requestedCartItemIds->count()
+                $cartItems->count()
+                !== $requestedCartItemIds->count()
             ) {
                 throw new ProductUnavailableException(
-                    'Một hoặc nhiều sản phẩm được chọn không hợp lệ.'
-                );
-            }
-            if ($cartItems->isEmpty()) {
-                throw new EmptyCartException(
-                    'Giỏ hàng không có sản phẩm của người bán này.'
+                    'Một hoặc nhiều sản phẩm được chọn không hợp lệ.',
                 );
             }
 
-            /*
-             * Sắp xếp ID trước khi khóa để giảm nguy cơ deadlock.
-             */
+            if ($cartItems->isEmpty()) {
+                throw new EmptyCartException(
+                    'Giỏ hàng không có sản phẩm của người bán này.',
+                );
+            }
+
             $productIds = $cartItems
                 ->pluck('product_id')
                 ->unique()
                 ->sort()
                 ->values();
 
-            /*
-             * Khóa tất cả Product sẽ được checkout.
-             */
+         
             $lockedProducts = Product::query()
                 ->whereIn('id', $productIds)
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
+
             $resolvedSellerIds = $lockedProducts
                 ->pluck('seller_id')
-                ->map(fn($sellerId) => (int) $sellerId)
+                ->map(fn ($sellerId) => (int) $sellerId)
                 ->unique()
                 ->values();
 
             if ($resolvedSellerIds->count() !== 1) {
                 throw new ProductUnavailableException(
-                    'Một đơn hàng chỉ được chứa sản phẩm của một người bán.'
+                    'Một đơn hàng chỉ được chứa sản phẩm của một người bán.',
                 );
             }
 
@@ -159,7 +176,7 @@ class CheckoutService
 
             if ($resolvedSellerId !== (int) $data['seller_id']) {
                 throw new ProductUnavailableException(
-                    'Người bán không khớp với sản phẩm trong giỏ hàng.'
+                    'Người bán không khớp với sản phẩm trong giỏ hàng.',
                 );
             }
 
@@ -169,96 +186,115 @@ class CheckoutService
                 ->first();
 
             if (
-                $seller === null ||
-                $seller->role !== UserRole::Seller ||
-                $seller->status !== UserStatus::Active
+                !$seller
+                || $seller->role !== UserRole::Seller
+                || $seller->status !== UserStatus::Active
             ) {
                 throw new ProductUnavailableException(
-                    'Người bán hiện không còn hoạt động.'
+                    'Người bán hiện không còn hoạt động.',
                 );
             }
-            /*
-             * Kiểm tra lại Product và tồn kho.
-             *
-             * Không được tin kết quả đã kiểm tra khi thêm Cart,
-             * vì trạng thái và stock có thể đã thay đổi.
-             */
+
+            $pickupAddress = SellerPickupAddress::query()
+                ->whereKey(
+                    $shippingQuote['pickup']['address_id'],
+                )
+                ->where('seller_id', $resolvedSellerId)
+                ->where('is_default', true)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$pickupAddress) {
+                throw new ProductUnavailableException(
+                    'Địa chỉ lấy hàng của người bán đã thay đổi. '
+                    . 'Vui lòng tính lại phí vận chuyển.',
+                );
+            }
+
+            $this->assertPickupAddressUnchanged(
+                $pickupAddress,
+                $shippingQuote,
+            );
+
+          
             foreach ($cartItems as $cartItem) {
                 $product = $lockedProducts->get(
-                    $cartItem->product_id
+                    $cartItem->product_id,
                 );
 
-                if ($product === null) {
+                if (!$product) {
                     throw new ProductUnavailableException(
-                        'Một sản phẩm trong giỏ hàng không còn tồn tại.'
-                    );
-                }
-
-                /*
-                 * Kiểm tra Product thực sự thuộc Seller được chọn.
-                 * Đây là lớp bảo vệ bổ sung.
-                 */
-                if (
-                    $product->seller_id
-                    !== (int) $data['seller_id']
-                ) {
-                    throw new ProductUnavailableException(
-                        'Sản phẩm không thuộc người bán đã chọn.'
+                        'Một sản phẩm trong giỏ hàng không còn tồn tại.',
                     );
                 }
 
                 if (
-                    $product->status
-                    !== ProductStatus::Active
+                    (int) $product->seller_id
+                    !== $resolvedSellerId
                 ) {
                     throw new ProductUnavailableException(
-                        "Sản phẩm {$product->name} hiện không được phép bán."
+                        'Sản phẩm không thuộc người bán đã chọn.',
                     );
                 }
 
-                if ($cartItem->quantity > $product->stock) {
+                if ($product->status !== ProductStatus::Active) {
+                    throw new ProductUnavailableException(
+                        "Sản phẩm {$product->name} hiện không được phép bán.",
+                    );
+                }
+
+                if (
+                    (int) $cartItem->quantity
+                    > (int) $product->stock
+                ) {
                     throw new InsufficientStockException(
                         "Sản phẩm {$product->name} chỉ còn "
-                            . "{$product->stock} sản phẩm trong kho."
+                        . "{$product->stock} sản phẩm trong kho.",
                     );
                 }
+
+                $cartItem->setRelation('product', $product);
             }
 
-            /*
-             * Tính tổng tiền từ giá hiện tại trong database.
-             *
-             * Không nhận price hoặc subtotal từ frontend.
-             */
+         
+            $currentPackage = $this->packageBuilder->build(
+                $cartItems,
+            );
+
+            $this->assertPackageUnchanged(
+                $currentPackage,
+                $shippingQuote,
+            );
+
+         
             $subtotal = $cartItems->reduce(
                 function (
                     string $subtotal,
-                    $cartItem
+                    $cartItem,
                 ) use ($lockedProducts): string {
                     $product = $lockedProducts->get(
-                        $cartItem->product_id
+                        $cartItem->product_id,
                     );
 
                     $lineTotal = Money::multiply(
                         (string) $product->effective_price,
-                        (int) $cartItem->quantity
+                        (int) $cartItem->quantity,
                     );
 
                     return Money::add(
                         $subtotal,
-                        $lineTotal
+                        $lineTotal,
                     );
                 },
-                Money::zero()
+                Money::zero(),
             );
+
             $voucher = null;
             $discountAmount = Money::zero();
 
-            /*
-             * Kiểm tra và khóa Voucher nếu Customer sử dụng.
-             */
-            if (! empty($data['voucher_code'])) {
+            if (!empty($data['voucher_code'])) {
                 $voucherCode = strtoupper(
-                    trim($data['voucher_code'])
+                    trim($data['voucher_code']),
                 );
 
                 $voucher = Voucher::query()
@@ -266,73 +302,134 @@ class CheckoutService
                     ->lockForUpdate()
                     ->first();
 
-                if ($voucher === null) {
+                if (!$voucher) {
                     throw new InvalidVoucherException(
-                        'Mã voucher không tồn tại.'
+                        'Mã voucher không tồn tại.',
                     );
                 }
 
-                $this->voucherService
-                    ->ensureVoucherIsUsable(
-                        $voucher,
-                        $user,
-                        $subtotal
-                    );
+                $this->voucherService->ensureVoucherIsUsable(
+                    $voucher,
+                    $user,
+                    $subtotal,
+                );
 
                 $discountAmount = $this
                     ->voucherService
                     ->calculateDiscount(
                         $voucher,
-                        $subtotal
+                        $subtotal,
                     );
             }
 
-            $shippingFee = Money::zero();
+         
+            $shippingFee = Money::add(
+                Money::zero(),
+                (string) $shippingQuote['shipping_fee'],
+            );
 
-            $merchandiseAmount =
-                Money::subtractFloorZero(
-                    $subtotal,
-                    $discountAmount
-                );
+            $merchandiseAmount = Money::subtractFloorZero(
+                $subtotal,
+                $discountAmount,
+            );
 
             $total = Money::add(
                 $merchandiseAmount,
-                $shippingFee
+                $shippingFee,
             );
 
-            /*
-             * Một Order thuộc đúng một Seller.
-             */
+           
             $order = Order::query()->create([
                 'user_id' => $user->id,
                 'seller_id' => $resolvedSellerId,
                 'voucher_id' => $voucher?->id,
                 'order_code' => $this->generateOrderCode(),
                 'idempotency_key' => $data['idempotency_key'],
+
                 'subtotal' => $subtotal,
                 'discount_amount' => $discountAmount,
                 'shipping_fee' => $shippingFee,
                 'total' => $total,
                 'status' => OrderStatus::Pending,
-                'shipping_name' => $data['shipping_name'],
-                'shipping_phone' => $data['shipping_phone'],
-                'shipping_address' => $data['shipping_address'],
-                'customer_note' => $data['customer_note'] ?? null,
+
+                'payment_method' => $data['payment_method'],
+
+                'shipping_provider' =>
+                    $shippingQuote['provider'],
+
+                'shipping_service_id' =>
+                    $shippingQuote['service_id'],
+
+                'shipping_service_type_id' =>
+                    $shippingQuote['service_type_id'],
+
+                'shipping_service_name' =>
+                    $shippingQuote['service_name'],
+
+                'shipping_name' =>
+                    $deliveryAddress->recipient_name,
+
+                'shipping_phone' =>
+                    $deliveryAddress->phone,
+
+                'shipping_address' =>
+                    $this->buildShippingAddress(
+                        $deliveryAddress,
+                    ),
+
+                'shipping_district_id' =>
+                    (int) $deliveryAddress->district_id,
+
+                'shipping_ward_code' =>
+                    (string) $deliveryAddress->ward_code,
+
+                'pickup_address_id' =>
+                    $pickupAddress->id,
+
+                'pickup_ghn_shop_id' =>
+                    (int) $pickupAddress->ghn_shop_id,
+
+                'pickup_name' =>
+                    $pickupAddress->contact_name,
+
+                'pickup_phone' =>
+                    $pickupAddress->phone,
+
+                'pickup_address' =>
+                    $pickupAddress->full_address,
+
+                'pickup_district_id' =>
+                    (int) $pickupAddress->district_id,
+
+                'pickup_ward_code' =>
+                    (string) $pickupAddress->ward_code,
+
+                'package_weight' =>
+                    (int) $currentPackage['weight'],
+
+                'package_length' =>
+                    (int) $currentPackage['length'],
+
+                'package_width' =>
+                    (int) $currentPackage['width'],
+
+                'package_height' =>
+                    (int) $currentPackage['height'],
+
+                'customer_note' =>
+                    $data['customer_note'] ?? null,
             ]);
 
-            /*
-             * Tạo snapshot OrderItem và trừ tồn kho.
-             */
             foreach ($cartItems as $cartItem) {
                 $product = $lockedProducts->get(
-                    $cartItem->product_id
+                    $cartItem->product_id,
                 );
 
                 $unitPrice = (string) $product->effective_price;
 
                 $lineTotal = Money::multiply(
                     $unitPrice,
-                    (int) $cartItem->quantity
+                    (int) $cartItem->quantity,
                 );
 
                 $order->items()->create([
@@ -346,17 +443,12 @@ class CheckoutService
 
                 $product->decrement(
                     'stock',
-                    $cartItem->quantity
+                    (int) $cartItem->quantity,
                 );
             }
 
-            /*
-             * Voucher chỉ được ghi nhận sau khi Order
-             * đã được tạo thành công.
-             */
-            if ($voucher !== null) {
+            if ($voucher) {
                 $voucher->increment('used_count');
-
                 $voucher->usages()->create([
                     'user_id' => $user->id,
                     'order_id' => $order->id,
@@ -364,25 +456,133 @@ class CheckoutService
                 ]);
             }
 
-            /*
-             * Chỉ xóa những CartItem vừa checkout.
-             *
-             * Không xóa sản phẩm thuộc các Seller khác.
-             */
-            $cart->items()
-                ->whereIn(
-                    'id',
-                    $cartItems->pluck('id')
-                )
-                ->delete();
+            $cart->items()->whereIn('id',$cartItems->pluck('id'),)->delete();
 
-            return $order->load([
-                'items',
-                'voucher',
-                'customer:id,name,email',
-                'seller:id,name,email',
-            ]);
+            return $this->loadOrder($order);
         }, 3);
+    }
+
+    private function assertDeliveryAddressUnchanged(
+        $deliveryAddress,
+        array $shippingQuote,
+    ): void {
+        $snapshot = $shippingQuote['delivery'];
+
+        if (
+            (int) $deliveryAddress->id
+                !== (int) ($snapshot['address_id'] ?? 0)
+            ||
+            (int) $deliveryAddress->district_id
+                !== (int) ($snapshot['district_id'] ?? 0)
+            ||
+            (string) $deliveryAddress->ward_code
+                !== (string) ($snapshot['ward_code'] ?? '')
+        ) {
+            throw new ProductUnavailableException(
+                'Địa chỉ nhận hàng đã thay đổi. '
+                . 'Vui lòng tính lại phí vận chuyển.',
+            );
+        }
+    }
+
+    private function assertPickupAddressUnchanged(
+        SellerPickupAddress $pickupAddress,
+        array $shippingQuote,
+    ): void {
+        $snapshot = $shippingQuote['pickup'];
+
+        if (
+            (int) $pickupAddress->id
+                !== (int) ($snapshot['address_id'] ?? 0)
+            ||
+            (int) $pickupAddress->ghn_shop_id
+                !== (int) ($snapshot['shop_id'] ?? 0)
+            ||
+            (int) $pickupAddress->district_id
+                !== (int) ($snapshot['district_id'] ?? 0)
+            ||
+            (string) $pickupAddress->ward_code
+                !== (string) ($snapshot['ward_code'] ?? '')
+        ) {
+            throw new ProductUnavailableException(
+                'Địa chỉ lấy hàng của người bán đã thay đổi. '
+                . 'Vui lòng tính lại phí vận chuyển.',
+            );
+        }
+    }
+
+    private function assertPackageUnchanged(
+        array $currentPackage,
+        array $shippingQuote,
+    ): void {
+        $quotedPackage = $shippingQuote['package'];
+
+        foreach (
+            [
+                'weight',
+                'length',
+                'width',
+                'height',
+            ] as $field
+        ) {
+            if (
+                (int) ($currentPackage[$field] ?? 0)
+                !== (int) ($quotedPackage[$field] ?? 0)
+            ) {
+                throw new ProductUnavailableException(
+                    'Thông tin kiện hàng đã thay đổi. '
+                    . 'Vui lòng tính lại phí vận chuyển.',
+                );
+            }
+        }
+    }
+
+    private function normalizeCartItemIds(
+        array $cartItemIds,
+    ): Collection {
+        return collect($cartItemIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->sort()
+            ->values();
+    }
+
+    private function buildShippingAddress(
+        $deliveryAddress,
+    ): string {
+        return implode(
+            ', ',
+            array_filter([
+                $deliveryAddress->address_line,
+                $deliveryAddress->ward,
+                $deliveryAddress->district,
+                $deliveryAddress->province,
+            ]),
+        );
+    }
+
+    private function findExistingOrder(
+        User $user,
+        string $idempotencyKey,
+    ): ?Order {
+        return Order::query()
+            ->where('user_id', $user->id)
+            ->where(
+                'idempotency_key',
+                $idempotencyKey,
+            )
+            ->first();
+    }
+
+    private function loadOrder(Order $order): Order
+    {
+        return $order->load([
+            'items',
+            'voucher',
+            'customer:id,name,email',
+            'seller:id,name,email',
+        ]);
     }
 
     private function generateOrderCode(): string
@@ -393,8 +593,8 @@ class CheckoutService
                 . strtoupper(Str::random(5));
         } while (
             Order::query()
-            ->where('order_code', $code)
-            ->exists()
+                ->where('order_code', $code)
+                ->exists()
         );
 
         return $code;

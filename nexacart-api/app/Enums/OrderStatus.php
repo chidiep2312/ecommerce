@@ -6,6 +6,7 @@ enum OrderStatus: string
 {
     case Pending = 'pending';
     case Confirmed = 'confirmed';
+    case Processing = 'processing';
     case Shipping = 'shipping';
     case Completed = 'completed';
     case Cancelled = 'cancelled';
@@ -22,8 +23,11 @@ enum OrderStatus: string
             ],
 
             self::Confirmed => [
-                self::Shipping,
+                self::Processing,
                 self::Cancelled,
+            ],
+            self::Processing => [
+                self::Shipping
             ],
 
             self::Shipping => [

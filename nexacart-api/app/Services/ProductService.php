@@ -315,10 +315,7 @@ class ProductService
             $data['main_new_image_index']
             ?? null;
 
-        /*
-         * Không truyền dữ liệu ảnh vào
-         * repository cập nhật bảng products.
-         */
+      
         unset(
             $data['images'],
             $data['removed_image_ids'],
@@ -368,9 +365,7 @@ class ProductService
                 $data
             );
 
-        /*
-         * Xóa các ảnh cũ.
-         */
+       
         if (!empty($removedImageIds)) {
             $imagesToDelete = $product
                 ->images()
@@ -391,9 +386,7 @@ class ProductService
             }
         }
 
-        /*
-         * Upload ảnh mới.
-         */
+    
         $createdImages = collect();
 
         if (!empty($newImages)) {
@@ -405,9 +398,6 @@ class ProductService
                     );
         }
 
-        /*
-         * Chọn một ảnh cũ làm ảnh chính.
-         */
         if (
             $mainExistingImageId !== null
         ) {
@@ -427,12 +417,6 @@ class ProductService
             }
         }
 
-        /*
-         * Chọn một ảnh mới làm ảnh chính.
-         *
-         * Chỉ thực hiện khi frontend không
-         * gửi main_existing_image_id.
-         */
         if (
             $mainExistingImageId === null &&
             $mainNewImageIndex !== null

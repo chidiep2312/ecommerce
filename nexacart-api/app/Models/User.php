@@ -163,4 +163,12 @@ class User extends Authenticatable
             Review::class
         );
     }
+
+    public function pickupAddresses(): HasMany
+{
+    return $this->hasMany(
+        SellerPickupAddress::class,
+        'seller_id',
+    );
+}
 }

@@ -11,9 +11,7 @@ use Illuminate\Validation\ValidationException;
 
 class AdminSellerService
 {
-    /**
-     * Lấy danh sách seller.
-     */
+    
     public function getSellers(
         array $filters
     ): LengthAwarePaginator {
@@ -80,9 +78,7 @@ class AdminSellerService
             ->withQueryString();
     }
 
-    /**
-     * Lấy chi tiết seller.
-     */
+   
     public function getSeller(
         User $seller
     ): User {
@@ -96,9 +92,7 @@ class AdminSellerService
         ]);
     }
 
-    /**
-     * Cập nhật trạng thái seller.
-     */
+  
     public function updateStatus(
         User $seller,
         UserStatus $status
@@ -117,9 +111,7 @@ class AdminSellerService
         ]);
     }
 
-    /**
-     * Đảm bảo user được truyền vào là seller.
-     */
+
     private function ensureSeller(
         User $user
     ): void {

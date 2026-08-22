@@ -11,49 +11,60 @@ class StoreAddressRequest extends FormRequest
         return true;
     }
 
-    public function rules(): array
-    {
-        return [
-            'recipient_name' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+   public function rules(): array
+{
+    return [
+        'recipient_name' => [
+            'required',
+            'string',
+            'max:100',
+        ],
 
-            'phone' => [
-                'required',
-                'string',
-                'max:20',
-            ],
+        'phone' => [
+            'required',
+            'string',
+            'max:20',
+        ],
 
-            'province' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+        'province' => [
+            'required',
+            'string',
+        ],
 
-            'district' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+        'province_id' => [
+            'required',
+            'integer',
+        ],
 
-            'ward' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+        'district' => [
+            'required',
+            'string',
+        ],
 
-            'address_line' => [
-                'required',
-                'string',
-                'max:500',
-            ],
+        'district_id' => [
+            'required',
+            'integer',
+        ],
 
-            'is_default' => [
-                'sometimes',
-                'boolean',
-            ],
-        ];
-    }
+        'ward' => [
+            'required',
+            'string',
+        ],
+
+        'ward_code' => [
+            'required',
+            'string',
+        ],
+
+        'address_line' => [
+            'required',
+            'string',
+            'max:255',
+        ],
+
+        'is_default' => [
+            'boolean',
+        ],
+    ];
+}
 }

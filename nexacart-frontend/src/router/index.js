@@ -174,6 +174,14 @@ const routes = [
                                 '@/views/customer/CustomerWishlistView.vue'
                             ),
                     },
+                    {
+                        path: '/payment-result',
+                        name: 'payment-result',
+                        component: () =>
+                            import(
+                                '@/views/PaymentResultView.vue'
+                            ),
+                    }
 
                     // {
                     //     path: 'change-password',
@@ -289,7 +297,7 @@ const routes = [
             },
             {
                 path: 'orders/:id',
-                name: 'seller-orders-show',
+                name: 'seller-orders-detail',
                 component: () =>
                     import(
                         '@/views/seller/orders/SellerOrderDetailView.vue'
@@ -317,6 +325,14 @@ const routes = [
                 component: () =>
                     import(
                         '@/views/seller/SellerShopView.vue'
+                    ),
+            },
+            {
+                path: 'addresses',
+                name: 'seller-address',
+                component: () =>
+                    import(
+                        '@/views/seller/SellerPickupAddressPage.vue'
                     ),
             },
         ],

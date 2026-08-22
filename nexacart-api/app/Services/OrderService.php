@@ -14,69 +14,52 @@ use Illuminate\Validation\ValidationException;
 
 class OrderService
 {
+    public function __construct(
+        private readonly ShipmentService $shipmentService,
+    ) {}
+
     public function getCustomerOrders(
         User $customer,
-        array $filters = []
+        array $filters = [],
     ): LengthAwarePaginator {
         return Order::query()
-            ->where(
-                'user_id',
-                $customer->id
-            )
+            ->where('user_id', $customer->id)
             ->with([
                 'seller:id,name,email',
             ])
             ->withCount('items')
             ->when(
                 $filters['search'] ?? null,
-                function (
-                    $query,
-                    string $search
-                ) {
+                function ($query, string $search) {
                     $query->where(
                         'order_code',
                         'like',
-                        '%' .
-                            trim($search) .
-                            '%'
+                        '%' . trim($search) . '%',
                     );
-                }
+                },
             )
             ->when(
                 $filters['status'] ?? null,
-                fn(
-                    $query,
-                    string $status
-                ) =>
-                $query->where(
+                fn ($query, string $status) => $query->where(
                     'status',
-                    $status
-                )
+                    $status,
+                ),
             )
             ->latest('id')
             ->paginate(
                 min(
-                    max(
-                        (int) (
-                            $filters['per_page']
-                            ?? 10
-                        ),
-                        5
-                    ),
-                    50
-                )
+                    max((int) ($filters['per_page'] ?? 10), 5),
+                    50,
+                ),
             )
             ->withQueryString();
     }
 
     public function getSellerOrders(
-        User $seller
+        User $seller,
     ): LengthAwarePaginator {
         return Order::query()
-            ->where(
-                'seller_id',
-                $seller->id
-            )
+            ->where('seller_id', $seller->id)
             ->with([
                 'customer:id,name,email',
                 'voucher',
@@ -100,178 +83,122 @@ class OrderService
             ->withQueryString();
     }
 
-    public function loadDetail(
-        Order $order
-    ): Order {
+    public function loadDetail(Order $order): Order
+    {
         return $order->load([
             'customer:id,name,email',
             'seller:id,name,email',
             'voucher',
-
             'items.review',
-
             'items.product:id,name,slug,sku',
-
             'items.product.mainImage:id,product_id,path,is_main,sort_order',
         ]);
     }
 
-    /**
-     * Seller/Admin cập nhật trạng thái đơn hàng.
-     */
     public function updateStatus(
         Order $order,
         OrderStatus $newStatus,
-        ?User $actor = null
     ): Order {
-        return DB::transaction(function () use (
-            $order,
-            $newStatus,
-            $actor
-        ) {
-            $lockedOrder = Order::query()
-                ->whereKey($order->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+        $result = DB::transaction(
+            function () use ($order, $newStatus) {
+                $lockedOrder = Order::query()
+                    ->whereKey($order->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            $currentStatus =
-                $lockedOrder->status;
+                $oldStatus = $lockedOrder->status;
 
-            if (
-                !$currentStatus->canTransitionTo(
-                    $newStatus
-                )
-            ) {
-                throw new InvalidOrderStatusTransitionException(
-                    "Không thể chuyển đơn hàng từ "
-                        . "{$currentStatus->value} "
-                        . "sang {$newStatus->value}."
-                );
-            }
+        
+                if (!$oldStatus->canTransitionTo($newStatus)) {
+                    throw ValidationException::withMessages([
+                        'status' => [
+                            "Không thể chuyển trạng thái "
+                            . "từ {$oldStatus->value} "
+                            . "sang {$newStatus->value}.",
+                        ],
+                    ]);
+                }
 
-            /*
-             * Khi chuyển sang cancelled:
-             * - hoàn tồn kho;
-             * - hoàn lượt sử dụng voucher.
-             */
-            if (
-                $newStatus ===
-                OrderStatus::Cancelled
-            ) {
-                $this->restoreOrderResources(
-                    $lockedOrder
-                );
-            }
+                $lockedOrder->status = $newStatus;
 
-            $updateData =
-                $this->buildStatusUpdateData(
-                    $newStatus
-                );
+                match ($newStatus) {
+                    OrderStatus::Confirmed => $lockedOrder->confirmed_at = now(),
+                    OrderStatus::Shipping => $lockedOrder->shipping_at = now(),
+                    OrderStatus::Completed => $lockedOrder->completed_at = now(),
+                    OrderStatus::Cancelled => $lockedOrder->cancelled_at = now(),
+                    default => null,
+                };
 
-            if (
-                $newStatus ===
-                OrderStatus::Cancelled &&
-                $actor !== null
-            ) {
-                $updateData['cancelled_by'] =
-                    $actor->id;
-            }
+                $lockedOrder->save();
 
-            $lockedOrder->update(
-                $updateData
+                return [
+                    'order' => $lockedOrder,
+                    'should_create_shipment' =>
+                        $oldStatus === OrderStatus::Pending
+                        && $newStatus === OrderStatus::Confirmed,
+                ];
+            },
+            3,
+        );
+
+        /** @var Order $updatedOrder */
+        $updatedOrder = $result['order'];
+
+        if ($result['should_create_shipment']) {
+            $this->shipmentService->createForConfirmedOrder(
+                $updatedOrder,
             );
+        }
 
-            return $this->loadDetail(
-                $lockedOrder->refresh()
-            );
-        }, 3);
+        return $this->loadDetail($updatedOrder->fresh());
     }
 
-    /**
-     * Khách hàng tự hủy đơn.
-     */
     public function cancelByCustomer(
         Order $order,
-        User $customer
+        User $customer,
     ): Order {
-        return DB::transaction(function () use (
-            $order,
-            $customer
-        ) {
+        return DB::transaction(function () use ($order, $customer) {
             $lockedOrder = Order::query()
                 ->whereKey($order->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            /*
-             * Kiểm tra lại quyền sở hữu ở Service
-             * để tăng an toàn ngoài Policy.
-             */
-            if (
-                $lockedOrder->user_id !==
-                $customer->id
-            ) {
+            if ($lockedOrder->user_id !== $customer->id) {
                 throw ValidationException::withMessages([
-                    'order' =>
-                    'Bạn không có quyền hủy đơn hàng này.',
+                    'order' => 'Bạn không có quyền hủy đơn hàng này.',
                 ]);
             }
 
-            if (
-                $lockedOrder->status !==
-                OrderStatus::Pending
-            ) {
+            if ($lockedOrder->status !== OrderStatus::Pending) {
                 throw ValidationException::withMessages([
-                    'status' =>
-                    'Chỉ có thể hủy đơn hàng đang chờ xác nhận.',
+                    'status' => 'Chỉ có thể hủy đơn hàng đang chờ xác nhận.',
                 ]);
             }
 
-            $this->restoreOrderResources(
-                $lockedOrder
-            );
+            $this->restoreOrderResources($lockedOrder);
 
             $lockedOrder->update([
-                'status' =>
-                OrderStatus::Cancelled,
-
-                'cancelled_at' =>
-                now(),
-
-                'cancelled_by' =>
-                $customer->id,
+                'status' => OrderStatus::Cancelled,
+                'cancelled_at' => now(),
+                'cancelled_by' => $customer->id,
             ]);
 
-            return $this->loadDetail(
-                $lockedOrder->refresh()
-            );
+            return $this->loadDetail($lockedOrder->refresh());
         }, 3);
     }
 
     private function buildStatusUpdateData(
-        OrderStatus $status
+        OrderStatus $status,
     ): array {
         $data = [
             'status' => $status,
         ];
 
         match ($status) {
-            OrderStatus::Confirmed =>
-            $data['confirmed_at'] =
-                now(),
-
-            OrderStatus::Shipping =>
-            $data['shipping_at'] =
-                now(),
-
-            OrderStatus::Completed =>
-            $data['completed_at'] =
-                now(),
-
-            OrderStatus::Cancelled =>
-            $data['cancelled_at'] =
-                now(),
-
+            OrderStatus::Confirmed => $data['confirmed_at'] = now(),
+            OrderStatus::Shipping => $data['shipping_at'] = now(),
+            OrderStatus::Completed => $data['completed_at'] = now(),
+            OrderStatus::Cancelled => $data['cancelled_at'] = now(),
             default => null,
         };
 
@@ -286,11 +213,9 @@ class OrderService
      * - giảm used_count của voucher;
      * - xóa voucher usage của đơn.
      */
-    private function restoreOrderResources(
-        Order $order
-    ): void {
-        $orderItems = $order
-            ->items()
+    private function restoreOrderResources(Order $order): void
+    {
+        $orderItems = $order->items()
             ->orderBy('product_id')
             ->get();
 
@@ -301,37 +226,24 @@ class OrderService
             ->sort()
             ->values();
 
-        /*
-         * Lock sản phẩm theo cùng thứ tự ID
-         * để hạn chế deadlock.
-         */
         $products = Product::query()
-            ->whereIn(
-                'id',
-                $productIds
-            )
+            ->whereIn('id', $productIds)
             ->orderBy('id')
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
 
-        foreach (
-            $orderItems as $item
-        ) {
-            if (
-                $item->product_id === null
-            ) {
+        foreach ($orderItems as $item) {
+            if ($item->product_id === null) {
                 continue;
             }
 
-            $product = $products->get(
-                $item->product_id
-            );
+            $product = $products->get($item->product_id);
 
             if ($product !== null) {
                 $product->increment(
                     'stock',
-                    (int) $item->quantity
+                    (int) $item->quantity,
                 );
             }
         }
@@ -341,9 +253,7 @@ class OrderService
         }
 
         $voucher = Voucher::query()
-            ->whereKey(
-                $order->voucher_id
-            )
+            ->whereKey($order->voucher_id)
             ->lockForUpdate()
             ->first();
 
@@ -351,24 +261,15 @@ class OrderService
             return;
         }
 
-        /*
-         * Chỉ giảm used_count nếu thực sự
-         * tồn tại usage thuộc đơn hàng này.
-         */
-        $deletedUsageCount = $voucher
-            ->usages()
-            ->where(
-                'order_id',
-                $order->id
-            )
+        $deletedUsageCount = $voucher->usages()
+            ->where('order_id', $order->id)
             ->delete();
 
         if ($deletedUsageCount > 0) {
             $voucher->update([
                 'used_count' => max(
                     0,
-                    (int) $voucher->used_count
-                        - 1
+                    (int) $voucher->used_count - 1,
                 ),
             ]);
         }
