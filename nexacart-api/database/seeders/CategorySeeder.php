@@ -12,21 +12,50 @@ class CategorySeeder extends Seeder
     public function run(): void
     {
         $categories = [
-            'Điện thoại',
-            'Laptop',
-            'Máy tính bảng',
-            'Thời trang nam',
-            'Thời trang nữ',
-            'Gia dụng',
+            [
+                'name' => 'Điện thoại',
+                'description' => 'Điện thoại thông minh và điện thoại di động.',
+            ],
+            [
+                'name' => 'Laptop',
+                'description' => 'Laptop phục vụ học tập, làm việc và giải trí.',
+            ],
+            [
+                'name' => 'Máy tính bảng',
+                'description' => 'Các sản phẩm máy tính bảng.',
+            ],
+            [
+                'name' => 'Tai nghe',
+                'description' => 'Tai nghe có dây và không dây.',
+            ],
+            [
+                'name' => 'Bàn phím',
+                'description' => 'Bàn phím văn phòng và gaming.',
+            ],
+            [
+                'name' => 'Chuột',
+                'description' => 'Chuột máy tính có dây và không dây.',
+            ],
+            [
+                'name' => 'Phụ kiện',
+                'description' => 'Phụ kiện công nghệ.',
+            ],
         ];
 
-        foreach ($categories as $name) {
-            Category::query()->updateOrCreate(
-                ['slug' => Str::slug($name)],
+        foreach ($categories as $category) {
+            Category::updateOrCreate(
                 [
-                    'name' => $name,
-                    'description' => null,
-                    'status' => CategoryStatus::Active,
+                    'slug' => Str::slug(
+                        $category['name']
+                    ),
+                ],
+                [
+                    'name' => $category['name'],
+                    'description' =>
+                        $category['description'],
+
+                    'status' =>
+                        CategoryStatus::Active->value,
                 ]
             );
         }

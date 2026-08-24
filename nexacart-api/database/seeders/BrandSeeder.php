@@ -16,19 +16,22 @@ class BrandSeeder extends Seeder
             'Samsung',
             'Xiaomi',
             'Dell',
-            'HP',
-            'Lenovo',
             'Asus',
-            'Nike',
-            'Adidas',
+            'Lenovo',
+            'Logitech',
+            'Sony',
         ];
 
         foreach ($brands as $name) {
-            Brand::query()->updateOrCreate(
-                ['slug' => Str::slug($name)],
+            Brand::updateOrCreate(
+                [
+                    'slug' => Str::slug($name),
+                ],
                 [
                     'name' => $name,
-                    'status' => BrandStatus::Active,
+
+                    'status' =>
+                        BrandStatus::Active->value,
                 ]
             );
         }

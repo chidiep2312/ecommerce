@@ -62,13 +62,6 @@ const wishlistLoadingId = ref(null)
 const errorMessage = ref('')
 const successMessage = ref('')
 
-/*
- * Tạm lấy category từ các product
- * đang được trả về.
- *
- * Khi có API category riêng thì thay
- * bằng fetchCategories().
- */
 const categories = computed(() => {
     const map = new Map()
 
@@ -275,6 +268,7 @@ async function fetchProducts() {
                 per_page: 8,
                 sort: 'newest',
             })
+            console.log(response)
 
         products.value =
             Array.isArray(

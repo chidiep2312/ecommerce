@@ -1,11 +1,15 @@
 <script setup>
 import {
+    computed,
+} from 'vue'
+
+import {
     Heart,
     ShoppingBag,
     Star,
 } from '@lucide/vue'
 
-defineProps({
+const props = defineProps({
     product: {
         type: Object,
         required: true,
@@ -17,12 +21,24 @@ const emit = defineEmits([
     'toggle-wishlist',
 ])
 
+const imageUrl = computed(() => {
+    return (
+        props.product.image ??
+        props.product.main_image?.url ??
+        props.product.images?.[0]?.url ??
+        '/images/product-placeholder.png'
+    )
+})
+
 function formatPrice(value) {
-    return new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-        maximumFractionDigits: 0,
-    }).format(value)
+    return new Intl.NumberFormat(
+        'vi-VN',
+        {
+            style: 'currency',
+            currency: 'VND',
+            maximumFractionDigits: 0,
+        },
+    ).format(value)
 }
 </script>
 
@@ -35,7 +51,7 @@ function formatPrice(value) {
                     slug: product.slug,
                 },
             }" class="product-card__image-link">
-                <img :src="product.image" :alt="product.name" class="product-card__image" />
+                <img :src="imageUrl" :alt="product.name" class="product-card__image" />
             </RouterLink>
 
             <span v-if="product.badge" class="product-card__badge">
@@ -55,7 +71,7 @@ function formatPrice(value) {
 
         <div class="product-card__content">
             <p class="product-card__category">
-                {{ product.category }}
+                {{ product.category.name }}
             </p>
 
             <RouterLink :to="{

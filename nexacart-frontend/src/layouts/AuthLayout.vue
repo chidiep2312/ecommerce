@@ -37,49 +37,7 @@ import {
                     trình giao hàng trên NexaCart.
                 </p>
 
-                <div class="auth-layout__benefits">
-                    <article>
-                        <ShieldCheck :size="21" />
-
-                        <div>
-                            <strong>
-                                Tài khoản an toàn
-                            </strong>
-
-                            <span>
-                                Thông tin đăng nhập được bảo vệ.
-                            </span>
-                        </div>
-                    </article>
-
-                    <article>
-                        <ShoppingBag :size="21" />
-
-                        <div>
-                            <strong>
-                                Quản lý đơn hàng
-                            </strong>
-
-                            <span>
-                                Theo dõi toàn bộ lịch sử mua sắm.
-                            </span>
-                        </div>
-                    </article>
-
-                    <article>
-                        <Truck :size="21" />
-
-                        <div>
-                            <strong>
-                                Theo dõi giao hàng
-                            </strong>
-
-                            <span>
-                                Cập nhật trạng thái đơn hàng dễ dàng.
-                            </span>
-                        </div>
-                    </article>
-                </div>
+             
             </div>
         </section>
 

@@ -29,6 +29,7 @@ class ProductRepository implements ProductRepositoryInterface
                 'brand:id,name,slug',
                 'seller:id,name',
                 'mainImage:id,product_id,path,is_main,sort_order',
+                'images:id,product_id,path,is_main,sort_order',
             ])
             ->withAvg(
                 'reviews',

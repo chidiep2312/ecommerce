@@ -38,8 +38,8 @@ const form = reactive({
     category_id: '',
     brand_id: '',
     description: '',
+    sale_price: '',
     price: '',
-    original_price: '',
     stock: 0,
     status: 'active',
 
@@ -302,22 +302,22 @@ function validateForm() {
     }
 
     if (
-        form.price === '' ||
-        Number(form.price) < 0
+        form.sale_priceprice === '' ||
+        Number(form.sale_price) < 0
     ) {
-        errors.price = [
+        errors.sale_price = [
             'Giá bán phải lớn hơn hoặc bằng 0.',
         ]
     }
 
     if (
-        form.original_price !==
+        form.price !==
             '' &&
         Number(
-            form.original_price,
+            form.price,
         ) < Number(form.price)
     ) {
-        errors.original_price = [
+        errors.price = [
             'Giá gốc phải lớn hơn hoặc bằng giá bán.',
         ]
     }
@@ -445,18 +445,18 @@ function buildFormData() {
     )
 
     formData.append(
-        'price',
-        String(form.price),
+        'sale_price',
+        String(form.sale_price),
     )
 
     if (
-        form.original_price !==
+        form.price !==
         ''
     ) {
         formData.append(
-            'original_price',
+            'price',
             String(
-                form.original_price,
+                form.price,
             ),
         )
     }
@@ -1084,11 +1084,11 @@ onBeforeUnmount(() => {
                                 :class="{
                                     'has-error':
                                         getFieldError(
-                                            'price',
+                                            'sale_price',
                                         ),
                                 }"
                             >
-                                <label for="price">
+                                <label for="sale_price">
                                     Giá bán
                                     <span>*</span>
                                 </label>
@@ -1097,6 +1097,55 @@ onBeforeUnmount(() => {
                                     <input
                                         id="price"
                                         v-model="form.price"
+                                        type="number"
+                                        min="0"
+                                        step="1000"
+                                        placeholder="0"
+                                        @input="
+                                            clearFieldError(
+                                                'sale_price',
+                                            )
+                                        "
+                                    >
+
+                                    <span>₫</span>
+                                </div>
+
+                                <p
+                                    v-if="
+                                        getFieldError(
+                                            'sale_price',
+                                        )
+                                    "
+                                    class="field-error"
+                                >
+                                    {{
+                                        getFieldError(
+                                            'sale_price',
+                                        )
+                                    }}
+                                </p>
+                            </div>
+
+                            <div
+                                class="form-group"
+                                :class="{
+                                    'has-error':
+                                        getFieldError(
+                                            'price',
+                                        ),
+                                }"
+                            >
+                                <label for="price">
+                                    Giá gốc
+                                </label>
+
+                                <div class="money-input">
+                                    <input
+                                        id="price"
+                                        v-model="
+                                            form.price
+                                        "
                                         type="number"
                                         min="0"
                                         step="1000"
@@ -1122,55 +1171,6 @@ onBeforeUnmount(() => {
                                     {{
                                         getFieldError(
                                             'price',
-                                        )
-                                    }}
-                                </p>
-                            </div>
-
-                            <div
-                                class="form-group"
-                                :class="{
-                                    'has-error':
-                                        getFieldError(
-                                            'original_price',
-                                        ),
-                                }"
-                            >
-                                <label for="original-price">
-                                    Giá gốc
-                                </label>
-
-                                <div class="money-input">
-                                    <input
-                                        id="original-price"
-                                        v-model="
-                                            form.original_price
-                                        "
-                                        type="number"
-                                        min="0"
-                                        step="1000"
-                                        placeholder="0"
-                                        @input="
-                                            clearFieldError(
-                                                'original_price',
-                                            )
-                                        "
-                                    >
-
-                                    <span>₫</span>
-                                </div>
-
-                                <p
-                                    v-if="
-                                        getFieldError(
-                                            'original_price',
-                                        )
-                                    "
-                                    class="field-error"
-                                >
-                                    {{
-                                        getFieldError(
-                                            'original_price',
                                         )
                                     }}
                                 </p>

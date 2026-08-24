@@ -71,6 +71,29 @@ class StoreProductRequest extends FormRequest
                 'sometimes',
                 Rule::enum(ProductStatus::class),
             ],
+            'images' => [
+                'required',
+                'array',
+                'min:1',
+                'max:8',
+            ],
+
+            'images.*' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:2048',
+            ],
+            'weight' => ['required','integer'],
+            'height' => ['required','integer'],
+            'length' => ['required','integer'],
+            'width' => ['required','integer'],
+
+            'main_image_index' => [
+                'required',
+                'integer',
+                'min:0',
+            ],
         ];
     }
 
@@ -78,37 +101,37 @@ class StoreProductRequest extends FormRequest
     {
         return [
             'category_id.required'
-                => 'Danh mục không được để trống.',
+            => 'Danh mục không được để trống.',
 
             'category_id.exists'
-                => 'Danh mục không tồn tại.',
+            => 'Danh mục không tồn tại.',
 
             'brand_id.exists'
-                => 'Thương hiệu không tồn tại.',
+            => 'Thương hiệu không tồn tại.',
 
             'name.required'
-                => 'Tên sản phẩm không được để trống.',
+            => 'Tên sản phẩm không được để trống.',
 
             'sku.required'
-                => 'SKU không được để trống.',
+            => 'SKU không được để trống.',
 
             'sku.unique'
-                => 'SKU đã tồn tại.',
+            => 'SKU đã tồn tại.',
 
             'price.required'
-                => 'Giá sản phẩm không được để trống.',
+            => 'Giá sản phẩm không được để trống.',
 
             'price.min'
-                => 'Giá sản phẩm không được âm.',
+            => 'Giá sản phẩm không được âm.',
 
             'sale_price.lte'
-                => 'Giá khuyến mãi phải nhỏ hơn hoặc bằng giá gốc.',
+            => 'Giá khuyến mãi phải nhỏ hơn hoặc bằng giá gốc.',
 
             'stock.required'
-                => 'Tồn kho không được để trống.',
+            => 'Tồn kho không được để trống.',
 
             'stock.min'
-                => 'Tồn kho không được âm.',
+            => 'Tồn kho không được âm.',
         ];
     }
 }

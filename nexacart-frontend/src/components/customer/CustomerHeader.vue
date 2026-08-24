@@ -790,47 +790,6 @@ async function handleLogout() {
                     Sản phẩm
                 </RouterLink>
 
-                <RouterLink
-                    :to="{
-                        name:
-                            'products',
-
-                        query: {
-                            promotion:
-                                1,
-                        },
-                    }"
-                    class="main-nav__item"
-                >
-                    <TicketPercent
-                        :size="17"
-                    />
-
-                    Ưu đãi
-
-                    <span class="hot-badge">
-                        Hot
-                    </span>
-                </RouterLink>
-
-                <RouterLink
-                    :to="{
-                        name:
-                            'products',
-
-                        query: {
-                            sort:
-                                'newest',
-                        },
-                    }"
-                    class="main-nav__item"
-                >
-                    <Tag
-                        :size="17"
-                    />
-
-                    Hàng mới
-                </RouterLink>
             </div>
         </div>
 

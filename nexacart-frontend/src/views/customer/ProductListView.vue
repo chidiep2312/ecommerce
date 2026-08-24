@@ -53,15 +53,13 @@ const brands = ref([])
 const isLoadingFilters = ref(false)
 const filterLoadError = ref('')
 
-// tạo biến reactive chứa trang hiện tại
 const currentPage = ref(
     parsePositiveInteger(
-        route.query.page, //lấy query parameter 'page' trên url
-        1, // giá trị query thường là chuỗi, hàm  này
-    ), //chuyển giá trị thành số nguyên dương, tham số 1 là mặc định
+        route.query.page,
+        1, 
+    ),
 )
 
-// nếu có param string thì dùng, không thì xếp mới nhất
 const sortBy = ref(
     typeof route.query.sort === 'string'
         ? route.query.sort
@@ -294,9 +292,9 @@ function toNumber(
 function resolveImageUrl(product) {
     return (
         product.main_image?.url ??
-        product.main_image?.path ??
+       
         product.image_url ??
-        product.image ??
+        product.images ??
         '/images/product-placeholder.png'
     )
 }
@@ -556,6 +554,8 @@ async function fetchProducts() {
             await getProducts(
                 buildProductParams(),
             )
+
+       console.log(response)
      
         const {
             items,

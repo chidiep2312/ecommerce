@@ -81,6 +81,25 @@ class UpdateProductRequest extends FormRequest
                 'sometimes',
                 Rule::enum(ProductStatus::class),
             ],
+            'images' => [
+
+                'array',
+                'min:1',
+                'max:8',
+            ],
+
+            'images.*' => [
+
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:2048',
+            ],
+
+            'main_image_index' => [
+
+                'integer',
+                'min:0',
+            ],
         ];
     }
 

@@ -27,6 +27,11 @@ class StoreProductImageRequest extends FormRequest
                 'mimes:jpg,jpeg,png,webp',
                 'max:2048',
             ],
+            'main_image_index' => [
+                'nullable',
+                'integer',
+                'min:0',
+            ],
         ];
     }
 
@@ -34,22 +39,22 @@ class StoreProductImageRequest extends FormRequest
     {
         return [
             'images.required'
-                => 'Bạn chưa chọn ảnh sản phẩm.',
+            => 'Bạn chưa chọn ảnh sản phẩm.',
 
             'images.array'
-                => 'Danh sách ảnh không hợp lệ.',
+            => 'Danh sách ảnh không hợp lệ.',
 
             'images.max'
-                => 'Mỗi lần chỉ được tải lên tối đa 8 ảnh.',
+            => 'Mỗi lần chỉ được tải lên tối đa 8 ảnh.',
 
             'images.*.image'
-                => 'Tệp tải lên phải là hình ảnh.',
+            => 'Tệp tải lên phải là hình ảnh.',
 
             'images.*.mimes'
-                => 'Ảnh chỉ được có định dạng JPG, JPEG, PNG hoặc WEBP.',
+            => 'Ảnh chỉ được có định dạng JPG, JPEG, PNG hoặc WEBP.',
 
             'images.*.max'
-                => 'Mỗi ảnh không được vượt quá 2 MB.',
+            => 'Mỗi ảnh không được vượt quá 2 MB.',
         ];
     }
 }
