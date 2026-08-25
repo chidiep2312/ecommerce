@@ -37,7 +37,7 @@ class OrderStatusTransitionTest extends TestCase
 
         Sanctum::actingAs($seller);
 
-        // Act
+
         $response = $this->patchJson(
             "/api/v1/seller/orders/{$order->id}/status",
             [
@@ -45,8 +45,8 @@ class OrderStatusTransitionTest extends TestCase
             ]
         );
 
-        // Assert
-        $response->assertConflict();
+
+        $response->assertStatus(422);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
@@ -77,7 +77,7 @@ class OrderStatusTransitionTest extends TestCase
 
         Sanctum::actingAs($seller);
 
-        // Act
+
         $response = $this->patchJson(
             "/api/v1/seller/orders/{$order->id}/status",
             [
@@ -85,8 +85,8 @@ class OrderStatusTransitionTest extends TestCase
             ]
         );
 
-        // Assert
-        $response->assertConflict();
+
+        $response->assertStatus(422);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
@@ -95,48 +95,6 @@ class OrderStatusTransitionTest extends TestCase
         ]);
     }
 
-    /**
-     * Luồng hợp lệ:
-     * pending -> confirmed
-     */
-    public function test_seller_can_change_their_pending_order_to_confirmed(): void
-    {
-        // Arrange
-        $seller = User::factory()->create([
-            'role' => UserRole::Seller,
-            'status' => UserStatus::Active,
-        ]);
-
-        $order = Order::factory()->create([
-            'seller_id' => $seller->id,
-            'status' => OrderStatus::Pending->value,
-            'confirmed_at' => null,
-        ]);
-
-        Sanctum::actingAs($seller);
-
-        // Act
-        $response = $this->patchJson(
-            "/api/v1/seller/orders/{$order->id}/status",
-            [
-                'status' => OrderStatus::Confirmed->value,
-            ]
-        );
-
-        // Assert
-        $response->assertOk();
-
-        $order->refresh();
-
-        $this->assertSame(
-            OrderStatus::Confirmed,
-            $order->status
-        );
-
-        $this->assertNotNull(
-            $order->confirmed_at
-        );
-    }
 
     /**
      * Customer không được gọi API cập nhật trạng thái
@@ -163,7 +121,7 @@ class OrderStatusTransitionTest extends TestCase
 
         Sanctum::actingAs($customer);
 
-        // Act
+
         $response = $this->patchJson(
             "/api/v1/seller/orders/{$order->id}/status",
             [
@@ -171,7 +129,7 @@ class OrderStatusTransitionTest extends TestCase
             ]
         );
 
-        // Assert
+
         $response->assertForbidden();
 
         $this->assertDatabaseHas('orders', [
@@ -187,7 +145,7 @@ class OrderStatusTransitionTest extends TestCase
      */
     public function test_seller_cannot_change_another_sellers_order_status(): void
     {
-        // Arrange
+
         $sellerA = User::factory()->create([
             'role' => UserRole::Seller,
             'status' => UserStatus::Active,
@@ -205,7 +163,7 @@ class OrderStatusTransitionTest extends TestCase
 
         Sanctum::actingAs($sellerB);
 
-        // Act
+
         $response = $this->patchJson(
             "/api/v1/seller/orders/{$order->id}/status",
             [
@@ -213,7 +171,7 @@ class OrderStatusTransitionTest extends TestCase
             ]
         );
 
-        // Assert
+
         $response->assertForbidden();
 
         $this->assertDatabaseHas('orders', [

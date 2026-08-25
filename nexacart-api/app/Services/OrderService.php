@@ -107,8 +107,7 @@ class OrderService
                     ->firstOrFail();
 
                 $oldStatus = $lockedOrder->status;
-
-        
+                
                 if (!$oldStatus->canTransitionTo($newStatus)) {
                     throw ValidationException::withMessages([
                         'status' => [

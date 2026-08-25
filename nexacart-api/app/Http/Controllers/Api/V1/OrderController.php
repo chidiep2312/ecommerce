@@ -19,42 +19,42 @@ class OrderController extends Controller
         private readonly OrderService $orderService
     ) {}
 
-   public function customerIndex(
-    Request $request
-): AnonymousResourceCollection {
-    $filters = $request->validate([
-        'search' => [
-            'nullable',
-            'string',
-            'max:100',
-        ],
+    public function customerIndex(
+        Request $request
+    ): AnonymousResourceCollection {
+        $filters = $request->validate([
+            'search' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
 
-        'status' => [
-            'nullable',
-            Rule::enum(
-                OrderStatus::class
-            ),
-        ],
+            'status' => [
+                'nullable',
+                Rule::enum(
+                    OrderStatus::class
+                ),
+            ],
 
-        'per_page' => [
-            'nullable',
-            'integer',
-            'min:5',
-            'max:50',
-        ],
-    ]);
+            'per_page' => [
+                'nullable',
+                'integer',
+                'min:5',
+                'max:50',
+            ],
+        ]);
 
-    $orders = $this
-        ->orderService
-        ->getCustomerOrders(
-            $request->user(),
-            $filters
+        $orders = $this
+            ->orderService
+            ->getCustomerOrders(
+                $request->user(),
+                $filters
+            );
+
+        return OrderResource::collection(
+            $orders
         );
-
-    return OrderResource::collection(
-        $orders
-    );
-}
+    }
 
     public function sellerIndex(
         Request $request
@@ -90,16 +90,11 @@ class OrderController extends Controller
         UpdateOrderStatusRequest $request,
         Order $order
     ): JsonResponse {
-        $this->authorize(
-            'updateStatus',
-            $order
-        );
+        $this->authorize('updateStatus', $order);
 
         $data = $request->validated();
 
-        $newStatus = OrderStatus::from(
-            $data['status']
-        );
+        $newStatus = OrderStatus::from($data['status']);
 
         $order = $this->orderService
             ->updateStatus(
@@ -110,13 +105,8 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-
-            'message' =>
-            'Cập nhật trạng thái đơn hàng thành công.',
-
-            'data' =>
-            new OrderResource($order),
-
+            'message' => 'Cập nhật trạng thái đơn hàng thành công.',
+            'data' => new OrderResource($order),
             'errors' => null,
         ]);
     }

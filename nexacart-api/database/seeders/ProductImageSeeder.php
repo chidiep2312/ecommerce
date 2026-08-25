@@ -49,7 +49,7 @@ class ProductImageSeeder extends Seeder
             ) {
                 $sourcePath =
                     database_path(
-                        "seeders/assets/products/{$fileName}"
+                        "seeders/assests/products/{$fileName}"
                     );
 
                 if (!file_exists($sourcePath)) {

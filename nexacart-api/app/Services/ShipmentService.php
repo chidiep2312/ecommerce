@@ -13,85 +13,63 @@ class ShipmentService
 {
     public function __construct(
         private readonly GhnService $ghnService,
-    ) {
-    }
+    ) {}
 
     public function createForConfirmedOrder(
         Order $order,
     ): Shipment {
-       
-        $shipment =
-            DB::transaction(
-                function () use (
-                    $order,
-                ) {
-                    $lockedOrder =
-                        Order::query()
-                            ->whereKey(
-                                $order->id,
-                            )
-                            ->lockForUpdate()
-                            ->firstOrFail();
 
-                    if (
+        $shipment = DB::transaction(
+            function () use ($order,) {
+                $lockedOrder = Order::query()
+                    ->whereKey($order->id,)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($lockedOrder->status !== OrderStatus::Confirmed) {
+                    throw new \RuntimeException(
+                        'Chỉ có thể tạo vận đơn cho Order đã được xác nhận.',
+                    );
+                }
+
+                $existingShipment = Shipment::query()
+                    ->where('client_order_code', $lockedOrder->order_code,)
+                    ->first();
+
+                if ($existingShipment) {
+                    return $existingShipment;
+                }
+
+                $codAmount = $lockedOrder->payment_method === 'cod' ? (string) $lockedOrder->total : '0.00';
+
+                return $lockedOrder
+                    ->shipments()
+                    ->create([
+                        'provider' =>
+                        'ghn',
+
+                        'client_order_code' =>
                         $lockedOrder
-                            ->status !==
-                        OrderStatus::Confirmed
-                    ) {
-                        throw new \RuntimeException(
-                            'Chỉ có thể tạo vận đơn cho Order đã được xác nhận.',
-                        );
-                    }
+                            ->order_code,
 
-                    $existingShipment =
-                        Shipment::query()
-                            ->where(
-                                'client_order_code',
-                                $lockedOrder
-                                    ->order_code,
-                            )
-                            ->first();
-
-                    if ($existingShipment) {
-                        return $existingShipment;
-                    }
-
-                    $codAmount =
+                        'shop_id' =>
                         $lockedOrder
-                            ->payment_method ===
-                            'cod'
-                            ? (string) $lockedOrder
-                                ->total
-                            : '0.00';
+                            ->pickup_ghn_shop_id,
 
-                    return $lockedOrder
-                        ->shipments()
-                        ->create([
-                            'provider' =>
-                                'ghn',
+                        'service_id' =>
+                        $lockedOrder
+                            ->shipping_service_id,
 
-                            'client_order_code' =>
-                                $lockedOrder
-                                    ->order_code,
+                        'status' =>
+                        'pending_creation',
 
-                            'shop_id' =>
-                                $lockedOrder
-                                    ->pickup_ghn_shop_id,
+                        'cod_amount' =>
+                        $codAmount,
+                    ]);
+            },
+        );
 
-                            'service_id' =>
-                                $lockedOrder
-                                    ->shipping_service_id,
 
-                            'status' =>
-                                'pending_creation',
-
-                            'cod_amount' =>
-                                $codAmount,
-                        ]);
-                },
-            );
-
-      
         return $this->syncToGhn(
             $shipment,
         );
@@ -100,10 +78,10 @@ class ShipmentService
     public function syncToGhn(
         Shipment $shipment,
     ): Shipment {
-       
+
         if (
             $shipment
-                ->provider_order_code
+            ->provider_order_code
         ) {
             return $shipment;
         }
@@ -124,48 +102,38 @@ class ShipmentService
 
             $result =
                 $this->ghnService
-                    ->createShippingOrder(
-                        shopId:
-                            (int) $shipment
-                                ->shop_id,
+                ->createShippingOrder(
+                    shopId: (int) $shipment
+                        ->shop_id,
 
-                        payload:
-                            $payload,
-                    );
+                    payload: $payload,
+                );
 
             $shipment->update([
                 'provider_order_code' =>
-                    $result[
-                        'order_code'
-                    ],
+                $result['order_code'],
 
                 'status' =>
-                    'ready_to_pick',
+                'ready_to_pick',
 
                 'provider_total_fee' =>
-                    isset(
-                        $result[
-                            'total_fee'
-                        ]
-                    )
-                        ? (string) $result[
-                            'total_fee'
-                        ]
-                        : null,
+                isset(
+                    $result['total_fee']
+                )
+                    ? (string) $result['total_fee']
+                    : null,
 
                 'expected_delivery_at' =>
-                    $result[
-                        'expected_delivery_time'
-                    ] ?? null,
+                $result['expected_delivery_time'] ?? null,
 
                 'failure_message' =>
-                    null,
+                null,
 
                 'create_response' =>
-                    $result,
+                $result,
 
                 'synced_at' =>
-                    now(),
+                now(),
             ]);
         } catch (Throwable $exception) {
             /*
@@ -176,29 +144,29 @@ class ShipmentService
              */
             $shipment->update([
                 'status' =>
-                    'create_failed',
+                'create_failed',
 
                 'failure_message' =>
-                    $exception
-                        ->getMessage(),
+                $exception
+                    ->getMessage(),
             ]);
 
             Log::error(
                 'GHN create shipping order failed.',
                 [
                     'shipment_id' =>
-                        $shipment->id,
+                    $shipment->id,
 
                     'order_id' =>
-                        $shipment->order_id,
+                    $shipment->order_id,
 
                     'client_order_code' =>
-                        $shipment
-                            ->client_order_code,
+                    $shipment
+                        ->client_order_code,
 
                     'message' =>
-                        $exception
-                            ->getMessage(),
+                    $exception
+                        ->getMessage(),
                 ],
             );
         }
@@ -231,42 +199,42 @@ class ShipmentService
         $codAmount =
             $order->payment_method ===
             'cod'
-                ? (int) $order->total
-                : 0;
+            ? (int) $order->total
+            : 0;
 
         $items =
             $order->items
-                ->map(
-                    function ($item) {
-                        return [
-                            'name' =>
-                                $item
-                                    ->product_name,
+            ->map(
+                function ($item) {
+                    return [
+                        'name' =>
+                        $item
+                            ->product_name,
 
-                            'code' =>
-                                $item
-                                    ->product_sku,
+                        'code' =>
+                        $item
+                            ->product_sku,
 
-                            'quantity' =>
-                                (int) $item
-                                    ->quantity,
+                        'quantity' =>
+                        (int) $item
+                            ->quantity,
 
-                            'price' =>
-                                (int) $item
-                                    ->unit_price,
-                        ];
-                    },
-                )
-                ->values()
-                ->all();
+                        'price' =>
+                        (int) $item
+                            ->unit_price,
+                    ];
+                },
+            )
+            ->values()
+            ->all();
 
         $content =
             $order->items
-                ->pluck(
-                    'product_name',
-                )
-                ->take(10)
-                ->implode(', ');
+            ->pluck(
+                'product_name',
+            )
+            ->take(10)
+            ->implode(', ');
 
         return [
             /*
@@ -275,75 +243,48 @@ class ShipmentService
              * Dùng làm idempotency
              * ở phía GHN.
              */
-            'client_order_code' =>
-                $shipment
-                    ->client_order_code,
+            'client_order_code' => $shipment->client_order_code,
 
             /*
              * Customer.
              */
-            'to_name' =>
-                $order
-                    ->shipping_name,
+            'to_name' => $order->shipping_name,
 
-            'to_phone' =>
-                $order
-                    ->shipping_phone,
+            'to_phone' => $order->shipping_phone,
 
-            'to_address' =>
-                $order
-                    ->shipping_address,
+            'to_address' => $order->shipping_address,
 
             'to_district_id' =>
-                (int) $order
-                    ->shipping_district_id,
+            (int) $order->shipping_district_id,
 
-            'to_ward_code' =>
-                (string) $order
-                    ->shipping_ward_code,
+            'to_ward_code' =>  (string) $order->shipping_ward_code,
 
             /*
              * Pickup snapshot.
              */
-            'from_name' =>
-                $order
-                    ->pickup_name,
+            'from_name' => $order->pickup_name,
 
-            'from_phone' =>
-                $order
-                    ->pickup_phone,
+            'from_phone' => $order->pickup_phone,
 
-            'from_address' =>
-                $order
-                    ->pickup_address,
+            'from_address' => $order->pickup_address,
 
             /*
              * Money.
              */
-            'payment_type_id' =>
-                $paymentTypeId,
+            'payment_type_id' => $paymentTypeId,
 
-            'cod_amount' =>
-                $codAmount,
+            'cod_amount' =>  $codAmount,
 
             /*
              * Package.
              */
-            'weight' =>
-                (int) $order
-                    ->package_weight,
+            'weight' => (int) $order->package_weight,
 
-            'length' =>
-                (int) $order
-                    ->package_length,
+            'length' => (int) $order->package_length,
 
-            'width' =>
-                (int) $order
-                    ->package_width,
+            'width' =>  (int) $order->package_width,
 
-            'height' =>
-                (int) $order
-                    ->package_height,
+            'height' => (int) $order->package_height,
 
             /*
              * Chỉ gửi service_id.
@@ -351,24 +292,22 @@ class ShipmentService
              * Không cần gửi đồng thời
              * service_type_id.
              */
-            'service_id' =>
-                (int) $order
-                    ->shipping_service_id,
+            'service_id' =>   (int) $order->shipping_service_id,
 
             /*
              * V1:
              * không cho xem hàng.
              */
             'required_note' =>
-                'KHONGCHOXEMHANG',
+            'KHONGCHOXEMHANG',
 
             'note' =>
-                $order
-                    ->customer_note ??
+            $order
+                ->customer_note ??
                 '',
 
             'content' =>
-                $content,
+            $content,
 
             /*
              * Giá trị khai báo bảo hiểm
@@ -377,10 +316,10 @@ class ShipmentService
              * Sau này tạo policy riêng.
              */
             'insurance_value' =>
-                0,
+            0,
 
             'items' =>
-                $items,
+            $items,
         ];
     }
 }

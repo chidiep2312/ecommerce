@@ -44,12 +44,12 @@ class OrderAuthorizationTest extends TestCase
 
         Sanctum::actingAs($customerA);
 
-        // Act
+      
         $response = $this->getJson(
             "/api/v1/customer/orders/{$order->id}"
         );
 
-        // Assert
+       
         $response->assertForbidden();
     }
 
