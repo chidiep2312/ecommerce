@@ -436,14 +436,14 @@ const routes = [
                         '@/views/admin/products/ProductDetailView.vue'
                     ),
             },
-            {
-                path: 'orders',
-                name: 'admin-orders',
-                component: () =>
-                    import(
-                        '@/views/admin/orders/OrderListView.vue'
-                    ),
-            },
+            // {
+            //     path: 'orders',
+            //     name: 'admin-orders',
+            //     component: () =>
+            //         import(
+            //             '@/views/admin/orders/OrderListView.vue'
+            //         ),
+            // },
             {
                 path: 'seller-requests',
                 name: 'admin-seller-requests',
