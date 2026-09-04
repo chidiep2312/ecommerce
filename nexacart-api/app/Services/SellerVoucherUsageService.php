@@ -21,7 +21,7 @@ class SellerVoucherUsageService
                 'voucher:id,code,type,value,min_order_amount,max_discount_amount',
                 'user:id,name,email',
 
-                'order:id,user_id,seller_id,order_code,status,subtotal,discount_amount,total_amount,created_at',
+                'order:id,user_id,seller_id,order_code,status,subtotal,discount_amount,total,created_at',
             ])
             ->latest(
                 'voucher_usages.id'

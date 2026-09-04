@@ -6,6 +6,11 @@ export function getSellerShopProfile() {
         '/seller/shop/profile',
     )
 }
+export function  getSellerSystemFee() {
+    return http.get(
+        '/seller/shop/fee',
+    )
+}
 
 export function updateSellerShopProfile(
     payload,

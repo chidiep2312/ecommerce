@@ -28,8 +28,7 @@ class CheckoutService
         private readonly VoucherService $voucherService,
         private readonly ShippingService $shippingService,
         private readonly ShippingPackageBuilder $packageBuilder,
-    ) {
-    }
+    ) {}
 
     public function checkout(User $user, array $data): Order
     {
@@ -66,13 +65,13 @@ class CheckoutService
             $data,
             $shippingQuote,
         ) {
-          
+
             $cart = Cart::query()
                 ->where('user_id', $user->id)
                 ->lockForUpdate()
                 ->first();
 
-         
+
             $existingOrder = $this->findExistingOrder(
                 $user,
                 $data['idempotency_key'],
@@ -115,7 +114,7 @@ class CheckoutService
                 );
             }
 
-          
+
             $cartItems = $cart->items()
                 ->whereIn('id', $requestedCartItemIds)
                 ->whereHas(
@@ -152,7 +151,7 @@ class CheckoutService
                 ->sort()
                 ->values();
 
-         
+
             $lockedProducts = Product::query()
                 ->whereIn('id', $productIds)
                 ->orderBy('id')
@@ -162,7 +161,7 @@ class CheckoutService
 
             $resolvedSellerIds = $lockedProducts
                 ->pluck('seller_id')
-                ->map(fn ($sellerId) => (int) $sellerId)
+                ->map(fn($sellerId) => (int) $sellerId)
                 ->unique()
                 ->values();
 
@@ -207,7 +206,7 @@ class CheckoutService
             if (!$pickupAddress) {
                 throw new ProductUnavailableException(
                     'Địa chỉ lấy hàng của người bán đã thay đổi. '
-                    . 'Vui lòng tính lại phí vận chuyển.',
+                        . 'Vui lòng tính lại phí vận chuyển.',
                 );
             }
 
@@ -216,7 +215,7 @@ class CheckoutService
                 $shippingQuote,
             );
 
-          
+
             foreach ($cartItems as $cartItem) {
                 $product = $lockedProducts->get(
                     $cartItem->product_id,
@@ -249,14 +248,14 @@ class CheckoutService
                 ) {
                     throw new InsufficientStockException(
                         "Sản phẩm {$product->name} chỉ còn "
-                        . "{$product->stock} sản phẩm trong kho.",
+                            . "{$product->stock} sản phẩm trong kho.",
                     );
                 }
 
                 $cartItem->setRelation('product', $product);
             }
 
-         
+
             $currentPackage = $this->packageBuilder->build(
                 $cartItems,
             );
@@ -266,7 +265,7 @@ class CheckoutService
                 $shippingQuote,
             );
 
-         
+
             $subtotal = $cartItems->reduce(
                 function (
                     string $subtotal,
@@ -322,7 +321,7 @@ class CheckoutService
                     );
             }
 
-         
+
             $shippingFee = Money::add(
                 Money::zero(),
                 (string) $shippingQuote['shipping_fee'],
@@ -338,7 +337,7 @@ class CheckoutService
                 $shippingFee,
             );
 
-           
+
             $order = Order::query()->create([
                 'user_id' => $user->id,
                 'seller_id' => $resolvedSellerId,
@@ -355,69 +354,69 @@ class CheckoutService
                 'payment_method' => $data['payment_method'],
 
                 'shipping_provider' =>
-                    $shippingQuote['provider'],
+                $shippingQuote['provider'],
 
                 'shipping_service_id' =>
-                    $shippingQuote['service_id'],
+                $shippingQuote['service_id'],
 
                 'shipping_service_type_id' =>
-                    $shippingQuote['service_type_id'],
+                $shippingQuote['service_type_id'],
 
                 'shipping_service_name' =>
-                    $shippingQuote['service_name'],
+                $shippingQuote['service_name'],
 
                 'shipping_name' =>
-                    $deliveryAddress->recipient_name,
+                $deliveryAddress->recipient_name,
 
                 'shipping_phone' =>
-                    $deliveryAddress->phone,
+                $deliveryAddress->phone,
 
                 'shipping_address' =>
-                    $this->buildShippingAddress(
-                        $deliveryAddress,
-                    ),
+                $this->buildShippingAddress(
+                    $deliveryAddress,
+                ),
 
                 'shipping_district_id' =>
-                    (int) $deliveryAddress->district_id,
+                (int) $deliveryAddress->district_id,
 
                 'shipping_ward_code' =>
-                    (string) $deliveryAddress->ward_code,
+                (string) $deliveryAddress->ward_code,
 
                 'pickup_address_id' =>
-                    $pickupAddress->id,
+                $pickupAddress->id,
 
                 'pickup_ghn_shop_id' =>
-                    (int) $pickupAddress->ghn_shop_id,
+                (int) $pickupAddress->ghn_shop_id,
 
                 'pickup_name' =>
-                    $pickupAddress->contact_name,
+                $pickupAddress->contact_name,
 
                 'pickup_phone' =>
-                    $pickupAddress->phone,
+                $pickupAddress->phone,
 
                 'pickup_address' =>
-                    $pickupAddress->full_address,
+                $pickupAddress->full_address,
 
                 'pickup_district_id' =>
-                    (int) $pickupAddress->district_id,
+                (int) $pickupAddress->district_id,
 
                 'pickup_ward_code' =>
-                    (string) $pickupAddress->ward_code,
+                (string) $pickupAddress->ward_code,
 
                 'package_weight' =>
-                    (int) $currentPackage['weight'],
+                (int) $currentPackage['weight'],
 
                 'package_length' =>
-                    (int) $currentPackage['length'],
+                (int) $currentPackage['length'],
 
                 'package_width' =>
-                    (int) $currentPackage['width'],
+                (int) $currentPackage['width'],
 
                 'package_height' =>
-                    (int) $currentPackage['height'],
+                (int) $currentPackage['height'],
 
                 'customer_note' =>
-                    $data['customer_note'] ?? null,
+                $data['customer_note'] ?? null,
             ]);
 
             foreach ($cartItems as $cartItem) {
@@ -456,7 +455,7 @@ class CheckoutService
                 ]);
             }
 
-            $cart->items()->whereIn('id',$cartItems->pluck('id'),)->delete();
+            $cart->items()->whereIn('id', $cartItems->pluck('id'),)->delete();
 
             return $this->loadOrder($order);
         }, 3);
@@ -470,17 +469,17 @@ class CheckoutService
 
         if (
             (int) $deliveryAddress->id
-                !== (int) ($snapshot['address_id'] ?? 0)
+            !== (int) ($snapshot['address_id'] ?? 0)
             ||
             (int) $deliveryAddress->district_id
-                !== (int) ($snapshot['district_id'] ?? 0)
+            !== (int) ($snapshot['district_id'] ?? 0)
             ||
             (string) $deliveryAddress->ward_code
-                !== (string) ($snapshot['ward_code'] ?? '')
+            !== (string) ($snapshot['ward_code'] ?? '')
         ) {
             throw new ProductUnavailableException(
                 'Địa chỉ nhận hàng đã thay đổi. '
-                . 'Vui lòng tính lại phí vận chuyển.',
+                    . 'Vui lòng tính lại phí vận chuyển.',
             );
         }
     }
@@ -493,20 +492,20 @@ class CheckoutService
 
         if (
             (int) $pickupAddress->id
-                !== (int) ($snapshot['address_id'] ?? 0)
+            !== (int) ($snapshot['address_id'] ?? 0)
             ||
             (int) $pickupAddress->ghn_shop_id
-                !== (int) ($snapshot['shop_id'] ?? 0)
+            !== (int) ($snapshot['shop_id'] ?? 0)
             ||
             (int) $pickupAddress->district_id
-                !== (int) ($snapshot['district_id'] ?? 0)
+            !== (int) ($snapshot['district_id'] ?? 0)
             ||
             (string) $pickupAddress->ward_code
-                !== (string) ($snapshot['ward_code'] ?? '')
+            !== (string) ($snapshot['ward_code'] ?? '')
         ) {
             throw new ProductUnavailableException(
                 'Địa chỉ lấy hàng của người bán đã thay đổi. '
-                . 'Vui lòng tính lại phí vận chuyển.',
+                    . 'Vui lòng tính lại phí vận chuyển.',
             );
         }
     }
@@ -531,7 +530,7 @@ class CheckoutService
             ) {
                 throw new ProductUnavailableException(
                     'Thông tin kiện hàng đã thay đổi. '
-                    . 'Vui lòng tính lại phí vận chuyển.',
+                        . 'Vui lòng tính lại phí vận chuyển.',
                 );
             }
         }
@@ -541,8 +540,8 @@ class CheckoutService
         array $cartItemIds,
     ): Collection {
         return collect($cartItemIds)
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
+            ->map(fn($id) => (int) $id)
+            ->filter(fn($id) => $id > 0)
             ->unique()
             ->sort()
             ->values();
@@ -593,8 +592,8 @@ class CheckoutService
                 . strtoupper(Str::random(5));
         } while (
             Order::query()
-                ->where('order_code', $code)
-                ->exists()
+            ->where('order_code', $code)
+            ->exists()
         );
 
         return $code;

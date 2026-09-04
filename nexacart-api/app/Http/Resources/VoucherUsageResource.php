@@ -90,7 +90,7 @@ class VoucherUsageResource extends JsonResource
                 'total_amount' =>
                     (float) (
                         $this->order
-                            ?->total_amount ?? 0
+                            ?->total ?? 0
                     ),
             ],
 

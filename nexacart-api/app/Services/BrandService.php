@@ -81,17 +81,17 @@ class BrandService
 
         while (
             Brand::query()
-                ->withTrashed()
-                ->when(
-                    $ignoredBrandId !== null,
-                    fn ($query) => $query->where(
-                        'id',
-                        '!=',
-                        $ignoredBrandId
-                    )
+            ->withTrashed()
+            ->when(
+                $ignoredBrandId !== null,
+                fn($query) => $query->where(
+                    'id',
+                    '!=',
+                    $ignoredBrandId
                 )
-                ->where('slug', $slug)
-                ->exists()
+            )
+            ->where('slug', $slug)
+            ->exists()
         ) {
             $slug = $baseSlug . '-' . $suffix;
             $suffix++;

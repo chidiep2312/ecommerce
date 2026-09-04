@@ -1,12 +1,6 @@
 <script setup>
-import {
-    computed,
-} from 'vue'
-import {
-    RouterLink,
-    useRoute,
-} from 'vue-router'
-
+import { computed } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 defineProps({
@@ -16,9 +10,7 @@ defineProps({
     },
 })
 
-const emit = defineEmits([
-    'close',
-])
+const emit = defineEmits(['close'])
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -28,12 +20,7 @@ const seller = computed(() => {
 })
 
 const sellerInitial = computed(() => {
-    return (
-        seller.value.name
-            ?.charAt(0)
-            ?.toUpperCase() ??
-        'S'
-    )
+    return seller.value.name?.charAt(0)?.toUpperCase() ?? 'S'
 })
 
 const managementItems = [
@@ -54,7 +41,7 @@ const managementItems = [
     },
     {
         label: 'Kho hàng',
-         routeName: 'seller-inventory',
+        routeName: 'seller-inventory',
         icon: 'inventory',
     },
     {
@@ -64,7 +51,7 @@ const managementItems = [
     },
     {
         label: 'Doanh thu',
-     //   routeName: 'seller-reports',
+        // routeName: 'seller-reports',
         icon: 'reports',
     },
 ]
@@ -77,23 +64,21 @@ const accountItems = [
     },
     {
         label: 'Cài đặt',
-      //  routeName: 'seller-settings',
+        // routeName: 'seller-settings',
         icon: 'settings',
     },
     {
-        label: 'Địa chỉ',
+        label: 'Địa chỉ kho',
         routeName: 'seller-address',
-        icon: 'settings',
+        icon: 'address',
     },
 ]
 
 function isRouteActive(routeName) {
+    if (!routeName) return false
     return (
         route.name === routeName ||
-        route.matched.some(
-            matchedRoute =>
-                matchedRoute.name === routeName,
-        )
+        route.matched.some(matchedRoute => matchedRoute.name === routeName)
     )
 }
 
@@ -103,436 +88,459 @@ function closeSidebar() {
 </script>
 
 <template>
+    <!-- Backdrop cho Mobile -->
+    <div
+        v-if="open"
+        class="sidebar-backdrop"
+        @click="closeSidebar"
+    ></div>
+
     <aside
         class="seller-sidebar"
-        :class="{
-            'sidebar-open': open,
-        }"
+        :class="{ 'sidebar-open': open }"
     >
+        <!-- 1. Header / Logo Thương hiệu -->
         <header class="sidebar-brand">
             <RouterLink
-                :to="{
-                    name: 'seller-dashboard',
-                }"
+                :to="{ name: 'seller-dashboard' }"
                 class="brand-link"
             >
-                <span class="brand-mark">
-                    N
-                </span>
-
+                <span class="brand-mark">N</span>
                 <span class="brand-content">
-                    <strong class="brand-name">
-                        NexaCart
-                    </strong>
-
-                    <small class="brand-role">
-                        Seller Center
-                    </small>
+                    <strong class="brand-name">NexaCart</strong>
+                    <small class="brand-role">KÊNH BÁN HÀNG</small>
                 </span>
             </RouterLink>
 
             <button
                 type="button"
-                class="sidebar-close"
+                class="btn-sidebar-close"
                 aria-label="Đóng menu"
                 @click="closeSidebar"
             >
-                ×
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
             </button>
         </header>
 
-        <section class="seller-summary">
+        <!-- 2. Thông tin tài khoản người bán -->
+        <section class="seller-card">
             <div class="seller-avatar">
                 {{ sellerInitial }}
             </div>
-
-            <div class="seller-information">
-                <strong>
-                    {{
-                        seller.name ??
-                        'Người bán'
-                    }}
+            <div class="seller-details">
+                <strong class="seller-name" :title="seller.name">
+                    {{ seller.name ?? 'Chủ cửa hàng' }}
                 </strong>
-
-                <span>
-                    {{
-                        seller.email ??
-                        'Chưa có email'
-                    }}
+                <span class="seller-email" :title="seller.email">
+                    {{ seller.email ?? 'seller@nexacart.vn' }}
                 </span>
             </div>
         </section>
 
-        <nav class="sidebar-navigation">
-            <p class="navigation-title">
-                QUẢN LÝ
-            </p>
+        <!-- 3. Danh mục Menu Điều Hướng -->
+        <nav class="sidebar-nav">
+            <!-- Nhóm QUẢN LÝ -->
+            <div class="nav-group">
+                <p class="group-title">QUẢN LÝ CỬA HÀNG</p>
 
-            <RouterLink
-                v-for="item in managementItems"
-                :key="item.routeName"
-                :to="{
-                    name: item.routeName,
-                }"
-                class="navigation-link"
-                :class="{
-                    active:
-                        isRouteActive(
-                            item.routeName,
-                        ),
-                }"
-            >
-                <span class="navigation-icon">
-                    <svg
-                        v-if="
-                            item.icon ===
-                            'dashboard'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z"
-                        />
-                    </svg>
+                <RouterLink
+                    v-for="item in managementItems"
+                    :key="item.label"
+                    :to="item.routeName ? { name: item.routeName } : '#'"
+                    class="nav-item"
+                    :class="{
+                        'is-active': isRouteActive(item.routeName),
+                        'is-disabled': !item.routeName
+                    }"
+                    @click="item.routeName && closeSidebar()"
+                >
+                    <span class="nav-icon">
+                        <!-- Dashboard -->
+                        <svg v-if="item.icon === 'dashboard'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
 
-                    <svg
-                        v-else-if="
-                            item.icon ===
-                            'products'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="m12 3 8 4-8 4-8-4 8-4Zm-8 8 8 4 8-4v6l-8 4-8-4v-6Z"
-                        />
-                    </svg>
+                        <!-- Products -->
+                        <svg v-else-if="item.icon === 'products'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
 
-                    <svg
-                        v-else-if="
-                            item.icon ===
-                            'orders'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M6 3h12v18H6V3Zm3 4h6v2H9V7Zm0 4h6v2H9v-2Zm0 4h4v2H9v-2Z"
-                        />
-                    </svg>
+                        <!-- Orders -->
+                        <svg v-else-if="item.icon === 'orders'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <path d="M16 10a4 4 0 0 1-8 0"></path>
+                        </svg>
 
-                    <svg
-                        v-else-if="
-                            item.icon ===
-                            'inventory'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M3 6 12 2l9 4v12l-9 4-9-4V6Zm9-1.8L7.1 6.4 12 8.6l4.9-2.2L12 4.2Zm-7 5v7.5l6 2.7v-7.5L5 9.2Zm8 10.2 6-2.7V9.2l-6 2.7v7.5Z"
-                        />
-                    </svg>
+                        <!-- Inventory -->
+                        <svg v-else-if="item.icon === 'inventory'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
 
-                    <svg
-                        v-else-if="
-                            item.icon ===
-                            'voucher'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4V6Zm6 2v8h2V8H9Zm4 0v2h3V8h-3Zm0 4v2h3v-2h-3Z"
-                        />
-                    </svg>
+                        <!-- Voucher -->
+                        <svg v-else-if="item.icon === 'voucher'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="6" width="20" height="12"></rect>
+                            <line x1="6" y1="12" x2="6.01" y2="12"></line>
+                            <line x1="10" y1="12" x2="18" y2="12"></line>
+                        </svg>
 
-                    <svg
-                        v-else-if="
-                            item.icon ===
-                            'reports'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M4 19h16v2H4v-2Zm2-2V9h3v8H6Zm5 0V4h3v13h-3Zm5 0v-6h3v6h-3Z"
-                        />
-                    </svg>
+                        <!-- Reports / Revenue -->
+                        <svg v-else-if="item.icon === 'reports'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="20" x2="12" y2="10"></line>
+                            <line x1="18" y1="20" x2="18" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="16"></line>
+                        </svg>
+                    </span>
 
-                    <svg
-                        v-else-if="
-                            item.icon ===
-                            'profile'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm-9 9a9 9 0 0 1 18 0H3Z"
-                        />
-                    </svg>
+                    <span class="nav-label">{{ item.label }}</span>
+                </RouterLink>
+            </div>
 
-                    <svg
-                        v-else
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="m10.7 2 .5 2.1a8 8 0 0 1 1.6 0L13.3 2l2.4 1 .9 1.9c.5.3.9.7 1.3 1.1l2-.7 1 2.4-1.8 1.2c.1.5.1 1.1 0 1.6l1.8 1.2-1 2.4-2-.7c-.4.4-.8.8-1.3 1.1l-.9 1.9-2.4 1-.5-2.1a8 8 0 0 1-1.6 0l-.5 2.1-2.4-1-.9-1.9a8 8 0 0 1-1.3-1.1l-2 .7-1-2.4 1.8-1.2a8 8 0 0 1 0-1.6L3.1 7.7l1-2.4 2 .7c.4-.4.8-.8 1.3-1.1L8.3 3l2.4-1ZM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"
-                        />
-                    </svg>
-                </span>
+            <!-- Nhóm TÀI KHOẢN -->
+            <div class="nav-group">
+                <p class="group-title">TÀI KHOẢN & THIẾT LẬP</p>
 
-                <span>
-                    {{ item.label }}
-                </span>
-            </RouterLink>
+                <RouterLink
+                    v-for="item in accountItems"
+                    :key="item.label"
+                    :to="item.routeName ? { name: item.routeName } : '#'"
+                    class="nav-item"
+                    :class="{
+                        'is-active': isRouteActive(item.routeName),
+                        'is-disabled': !item.routeName
+                    }"
+                    @click="item.routeName && closeSidebar()"
+                >
+                    <span class="nav-icon">
+                        <!-- Profile -->
+                        <svg v-if="item.icon === 'profile'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
 
-            <p class="navigation-title account-title">
-                TÀI KHOẢN
-            </p>
+                        <!-- Address -->
+                        <svg v-else-if="item.icon === 'address'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
 
-            <RouterLink
-                v-for="item in accountItems"
-                :key="item.routeName"
-                :to="{
-                    name: item.routeName,
-                }"
-                class="navigation-link"
-                :class="{
-                    active:
-                        isRouteActive(
-                            item.routeName,
-                        ),
-                }"
-            >
-                <span class="navigation-icon">
-                    <svg
-                        v-if="
-                            item.icon ===
-                            'profile'
-                        "
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm-9 9a9 9 0 0 1 18 0H3Z"
-                        />
-                    </svg>
+                        <!-- Settings -->
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </span>
 
-                    <svg
-                        v-else
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="m10.7 2 .5 2.1a8 8 0 0 1 1.6 0L13.3 2l2.4 1 .9 1.9c.5.3.9.7 1.3 1.1l2-.7 1 2.4-1.8 1.2c.1.5.1 1.1 0 1.6l1.8 1.2-1 2.4-2-.7c-.4.4-.8.8-1.3 1.1l-.9 1.9-2.4 1-.5-2.1a8 8 0 0 1-1.6 0l-.5 2.1-2.4-1-.9-1.9a8 8 0 0 1-1.3-1.1l-2 .7-1-2.4 1.8-1.2a8 8 0 0 1 0-1.6L3.1 7.7l1-2.4 2 .7c.4-.4.8-.8 1.3-1.1L8.3 3l2.4-1ZM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"
-                        />
-                    </svg>
-                </span>
-
-                <span>
-                    {{ item.label }}
-                </span>
-            </RouterLink>
+                    <span class="nav-label">{{ item.label }}</span>
+                </RouterLink>
+            </div>
         </nav>
 
+        <!-- 4. Footer: Xem gian hàng -->
         <footer class="sidebar-footer">
-            <RouterLink
-                to="/"
-                class="storefront-link"
-            >
-                Xem trang bán hàng
+            <RouterLink to="/" class="storefront-link">
+                <span>Xem trang bán hàng</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
             </RouterLink>
         </footer>
     </aside>
 </template>
 
 <style scoped>
+/* ================= Base Reset & Color Scheme ================= */
 .seller-sidebar {
+    --brand-green-primary: #15803d;     /* Xanh lá chủ đạo */
+    --brand-green-hover: #166534;       /* Xanh lá đậm khi hover */
+    --brand-green-light: #f0fdf4;       /* Nền xanh lá rất nhạt */
+    --brand-green-border: #bbf7d0;      /* Viền xanh lá */
+    --color-text-main: #111827;
+    --color-text-muted: #6b7280;
+    --color-border: #e5e7eb;
+    --sidebar-width: 260px;
+
     position: fixed;
-    z-index: 100;
     top: 0;
     bottom: 0;
     left: 0;
+    z-index: 100;
     display: flex;
-    width: 260px;
     flex-direction: column;
-    border-right: 1px solid #dfe5e1;
+    width: var(--sidebar-width);
     background: #ffffff;
-    transition: transform 0.25s ease;
+    border-right: 1px solid var(--color-border);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: transform 0.2s ease;
+    box-sizing: border-box;
 }
 
+/* ================= 1. Brand Header ================= */
 .sidebar-brand {
     display: flex;
-    min-height: 74px;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #e5e7eb;
-    padding: 0 20px;
+    min-height: 64px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--color-border);
+    background: #ffffff;
 }
 
 .brand-link {
     display: flex;
     align-items: center;
     gap: 12px;
-    color: inherit;
     text-decoration: none;
+    color: inherit;
 }
 
 .brand-mark {
     display: flex;
-    width: 38px;
-    height: 38px;
     align-items: center;
     justify-content: center;
-    background: #15803d;
+    width: 34px;
+    height: 34px;
+    background: var(--brand-green-primary);
     color: #ffffff;
-    font-size: 20px;
-    font-weight: 700;
+    font-size: 1.125rem;
+    font-weight: 800;
+    border-radius: 0; /* Vuông góc */
+    letter-spacing: -0.02em;
 }
 
 .brand-content {
     display: flex;
     flex-direction: column;
-    gap: 2px;
 }
 
 .brand-name {
-    color: #111827;
-    font-size: 17px;
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--color-text-main);
+    letter-spacing: -0.01em;
 }
 
 .brand-role {
-    color: #15803d;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--brand-green-primary);
+    letter-spacing: 0.05em;
+    font-family: monospace;
 }
 
-.sidebar-close {
+.btn-sidebar-close {
     display: none;
-    border: 0;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     background: transparent;
-    color: #6b7280;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
     cursor: pointer;
-    font-size: 26px;
+    border-radius: 0;
 }
 
-.seller-summary {
+.btn-sidebar-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ================= 2. Seller Profile Box ================= */
+.seller-card {
     display: flex;
     align-items: center;
-    gap: 11px;
-    margin: 18px 16px 8px;
-    border: 1px solid #dcfce7;
-    background: #f0fdf4;
-    padding: 12px;
+    gap: 12px;
+    margin: 12px 12px 4px 12px;
+    padding: 10px 12px;
+    background: var(--brand-green-light);
+    border: 1px solid var(--brand-green-border);
+    border-left: 3px solid var(--brand-green-primary); /* Điểm nhấn phẳng */
 }
 
 .seller-avatar {
     display: flex;
-    width: 42px;
-    height: 42px;
-    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    background: #15803d;
+    width: 36px;
+    height: 36px;
+    background: var(--brand-green-primary);
     color: #ffffff;
     font-weight: 700;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+    border-radius: 0;
 }
 
-.seller-information {
+.seller-details {
     display: flex;
-    min-width: 0;
     flex-direction: column;
-    gap: 3px;
+    min-width: 0;
 }
 
-.seller-information strong,
-.seller-information span {
+.seller-name {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-text-main);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.seller-email {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: monospace;
 }
 
-.seller-information strong {
-    color: #111827;
-    font-size: 14px;
-}
-
-.seller-information span {
-    color: #6b7280;
-    font-size: 11px;
-}
-
-.sidebar-navigation {
+/* ================= 3. Navigation Links ================= */
+.sidebar-nav {
     flex: 1;
     overflow-y: auto;
-    padding: 12px;
-}
-
-.navigation-title {
-    margin: 12px 10px 8px;
-    color: #9ca3af;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.9px;
-}
-
-.account-title {
-    margin-top: 24px;
-}
-
-.navigation-link {
+    padding: 12px 0;
     display: flex;
-    min-height: 44px;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Custom Slim Scrollbar (Square) */
+.sidebar-nav::-webkit-scrollbar {
+    width: 4px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background: #e5e7eb;
+}
+
+.nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.group-title {
+    margin: 0 0 6px 16px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #9ca3af;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.nav-item {
+    display: flex;
     align-items: center;
     gap: 12px;
-    border-left: 3px solid transparent;
-    padding: 0 12px;
-    color: #4b5563;
-    font-size: 14px;
+    min-height: 40px;
+    padding: 0 16px;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
     font-weight: 500;
     text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+    border-radius: 0;
 }
 
-.navigation-link:hover {
-    background: #f3f4f6;
-    color: #166534;
+.nav-item:hover:not(.is-disabled) {
+    background: #f9fafb;
+    color: var(--color-text-main);
+    border-left-color: #cbd5e1;
 }
 
-.navigation-link.active {
-    border-left-color: #15803d;
-    background: #f0fdf4;
-    color: #166534;
+.nav-item.is-active {
+    background: var(--brand-green-light);
+    color: var(--brand-green-hover);
+    font-weight: 700;
+    border-left-color: var(--brand-green-primary);
 }
 
-.navigation-icon {
+.nav-item.is-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.nav-icon {
     display: flex;
-    width: 20px;
-    height: 20px;
     align-items: center;
     justify-content: center;
-}
-
-.navigation-icon svg {
     width: 18px;
     height: 18px;
-    fill: currentColor;
+    flex-shrink: 0;
 }
 
+.nav-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.is-active .nav-icon svg {
+    stroke: var(--brand-green-primary);
+}
+
+.nav-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ================= 4. Footer ================= */
 .sidebar-footer {
-    border-top: 1px solid #e5e7eb;
-    padding: 16px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--color-border);
+    background: #ffffff;
 }
 
 .storefront-link {
     display: flex;
-    min-height: 40px;
     align-items: center;
     justify-content: center;
-    border: 1px solid #16a34a;
-    color: #15803d;
-    font-size: 13px;
-    font-weight: 500;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 12px;
+    background: #ffffff;
+    border: 1px solid var(--brand-green-primary);
+    color: var(--brand-green-primary);
+    font-size: 0.8125rem;
+    font-weight: 700;
     text-decoration: none;
+    border-radius: 0; /* Vuông vắn */
+    transition: all 0.15s ease;
+}
+
+.storefront-link svg {
+    width: 14px;
+    height: 14px;
 }
 
 .storefront-link:hover {
-    background: #f0fdf4;
+    background: var(--brand-green-primary);
+    color: #ffffff;
+}
+
+/* ================= 5. Mobile Responsive & Backdrop ================= */
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(0, 0, 0, 0.4);
 }
 
 @media (max-width: 1024px) {
@@ -542,16 +550,15 @@ function closeSidebar() {
 
     .seller-sidebar.sidebar-open {
         transform: translateX(0);
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
     }
 
-    .sidebar-close {
+    .sidebar-backdrop {
         display: block;
     }
-}
 
-@media (max-width: 680px) {
-    .seller-sidebar {
-        width: min(290px, 86vw);
+    .btn-sidebar-close {
+        display: flex;
     }
 }
 </style>

@@ -64,10 +64,7 @@ class AddressService
                         ]);
                 }
 
-                /*
-                 * Không cho bỏ mặc định trực tiếp
-                 * nếu đây đang là địa chỉ mặc định.
-                 */
+          
                 if (
                     $address->is_default
                     && array_key_exists('is_default', $data)

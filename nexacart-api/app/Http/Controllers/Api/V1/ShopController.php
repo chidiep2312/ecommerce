@@ -122,4 +122,14 @@ class ShopController extends Controller
             $products
         );
     }
+   public function systemFee(Request $request): JsonResponse
+{
+    return response()->json([
+        'success' => true,
+        'message' => 'Lấy thông tin phí hệ thống thành công.',
+        'data' => $this->shopService->getSystemFee($request->user()),
+        'errors' => null,
+    ]);
+}
+    
 }

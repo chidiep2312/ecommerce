@@ -8,85 +8,121 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
+use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+
 class SellerDashboardService
 {
     private const LOW_STOCK_THRESHOLD = 5;
-    public function getDashboard(User $seller): array
-    {
-        return Cache::remember(
+
+    public function getDashboard(
+        User $seller
+    ): array {
+   
+    return Cache::remember(
             "seller-dashboard:{$seller->id}",
             now()->addMinutes(5),
             fn() => [
-                'summary' => $this->getSummary($seller),
-                'order_statuses'
-                => $this->getOrderStatuses($seller),
-                'top_products'
-                => $this->getTopProducts($seller),
-                'daily_revenue'
-                => $this->getDailyRevenue($seller),
+                'summary' =>
+                    $this->getSummary($seller),
+
+                'order_statuses' =>
+                    $this->getOrderStatuses($seller),
+
+                'top_products' =>
+                    $this->getTopProducts($seller),
+
+                'daily_revenue' =>
+                    $this->getDailyRevenue($seller),
             ]
         );
     }
-    private function getSummary(User $seller): array
-    {
+
+    private function getSummary(
+        User $seller
+    ): array {
         $productQuery = Product::query()
-            ->where('seller_id', $seller->id);
-
-        $orderQuery = Order::query()
-            ->where('seller_id', $seller->id);
-
-        $completedOrderQuery = Order::query()
-            ->where('seller_id', $seller->id)
             ->where(
-                'status',
-                OrderStatus::Completed->value
+                'seller_id',
+                $seller->id
             );
 
-        return [
-            'total_products' => (clone $productQuery)->count(),
+        $orderQuery = Order::query()
+            ->where(
+                'seller_id',
+                $seller->id
+            );
 
-            'active_products' => (clone $productQuery)
+        $completedOrderQuery =
+            Order::query()
+                ->where(
+                    'seller_id',
+                    $seller->id
+                )
                 ->where(
                     'status',
-                    ProductStatus::Active->value
-                )
-                ->count(),
+                    OrderStatus::Completed->value
+                );
 
-            'low_stock_products' => (clone $productQuery)
-                ->where('stock', '>', 0)
-                ->where(
-                    'stock',
-                    '<=',
-                    self::LOW_STOCK_THRESHOLD
-                )
-                ->count(),
+        return [
+            'total_products' =>
+                (clone $productQuery)
+                    ->count(),
 
-            'out_of_stock_products' => (clone $productQuery)
-                ->where('stock', 0)
-                ->count(),
+            'active_products' =>
+                (clone $productQuery)
+                    ->where(
+                        'status',
+                        ProductStatus::Active->value
+                    )
+                    ->count(),
 
-            'total_orders' => (clone $orderQuery)->count(),
+            'low_stock_products' =>
+                (clone $productQuery)
+                    ->where(
+                        'stock',
+                        '>',
+                        0
+                    )
+                    ->where(
+                        'stock',
+                        '<=',
+                        self::LOW_STOCK_THRESHOLD
+                    )
+                    ->count(),
 
-            'completed_revenue' => (float) (
-                (clone $completedOrderQuery)
-                ->sum('total')
-            ),
+            'out_of_stock_products' =>
+                (clone $productQuery)
+                    ->where(
+                        'stock',
+                        0
+                    )
+                    ->count(),
 
-            'current_month_revenue' => (float) (
-                (clone $completedOrderQuery)
-                ->whereYear(
-                    'completed_at',
-                    now()->year
-                )
-                ->whereMonth(
-                    'completed_at',
-                    now()->month
-                )
-                ->sum('total')
-            ),
+            'total_orders' =>
+                (clone $orderQuery)
+                    ->count(),
+
+            'completed_revenue' =>
+                (float) (
+                    (clone $completedOrderQuery)
+                        ->sum('total')
+                ),
+
+            'current_month_revenue' =>
+                (float) (
+                    (clone $completedOrderQuery)
+                        ->whereYear(
+                            'completed_at',
+                            now()->year
+                        )
+                        ->whereMonth(
+                            'completed_at',
+                            now()->month
+                        )
+                        ->sum('total')
+                ),
         ];
     }
 
@@ -94,17 +130,32 @@ class SellerDashboardService
         User $seller
     ): array {
         $counts = Order::query()
-            ->where('seller_id', $seller->id)
-            ->selectRaw('status, COUNT(*) as total')
+            ->where(
+                'seller_id',
+                $seller->id
+            )
+            ->selectRaw(
+                'status, COUNT(*) as total'
+            )
             ->groupBy('status')
-            ->pluck('total', 'status');
+            ->pluck(
+                'total',
+                'status'
+            );
 
-        return collect(OrderStatus::cases())
+        return collect(
+            OrderStatus::cases()
+        )
             ->mapWithKeys(
-                fn(OrderStatus $status) => [
-                    $status->value => (int) (
-                        $counts[$status->value] ?? 0
-                    ),
+                fn(
+                    OrderStatus $status
+                ) => [
+                    $status->value =>
+                        (int) (
+                            $counts[
+                                $status->value
+                            ] ?? 0
+                        ),
                 ]
             )
             ->all();
@@ -128,33 +179,52 @@ class SellerDashboardService
                 'orders.status',
                 OrderStatus::Completed->value
             )
-            ->whereNull('orders.deleted_at')
+            ->whereNull(
+                'orders.deleted_at'
+            )
             ->select([
                 'order_items.product_id',
                 'order_items.product_name',
                 'order_items.product_sku',
             ])
             ->selectRaw(
-                'SUM(order_items.quantity) as total_quantity'
+                'SUM(order_items.quantity)
+                 as total_quantity'
             )
             ->selectRaw(
-                'SUM(order_items.line_total) as total_revenue'
+                'SUM(order_items.line_total)
+                 as total_revenue'
             )
             ->groupBy(
                 'order_items.product_id',
                 'order_items.product_name',
                 'order_items.product_sku'
             )
-            ->orderByDesc('total_quantity')
+            ->orderByDesc(
+                'total_quantity'
+            )
             ->limit(5)
             ->get()
-            ->map(fn($item) => [
-                'product_id' => $item->product_id,
-                'product_name' => $item->product_name,
-                'product_sku' => $item->product_sku,
-                'total_quantity' => (int) $item->total_quantity,
-                'total_revenue' => (float) $item->total_revenue,
-            ]);
+            ->map(
+                fn($item) => [
+                    'product_id' =>
+                        $item->product_id,
+
+                    'product_name' =>
+                        $item->product_name,
+
+                    'product_sku' =>
+                        $item->product_sku,
+
+                    'total_quantity' =>
+                        (int)
+                        $item->total_quantity,
+
+                    'total_revenue' =>
+                        (float)
+                        $item->total_revenue,
+                ]
+            );
     }
 
     private function getDailyRevenue(
@@ -164,36 +234,88 @@ class SellerDashboardService
             ->subDays(29)
             ->startOfDay();
 
-        return Order::query()
-            ->where('seller_id', $seller->id)
+        $endDate = now()
+            ->endOfDay();
+
+        $revenues = Order::query()
+            ->where(
+                'seller_id',
+                $seller->id
+            )
             ->where(
                 'status',
                 OrderStatus::Completed->value
             )
-            ->whereNotNull('completed_at')
-            ->where(
+            ->whereNotNull(
+                'completed_at'
+            )
+            ->whereBetween(
                 'completed_at',
-                '>=',
-                $startDate
+                [
+                    $startDate,
+                    $endDate,
+                ]
             )
             ->selectRaw(
-                'DATE(completed_at) as revenue_date'
+                'DATE(completed_at)
+                 as revenue_date'
             )
             ->selectRaw(
-                'SUM(total) as revenue'
+                'SUM(total)
+                 as revenue'
             )
             ->selectRaw(
-                'COUNT(*) as orders_count'
+                'COUNT(*)
+                 as orders_count'
             )
             ->groupByRaw(
                 'DATE(completed_at)'
             )
-            ->orderBy('revenue_date')
+            ->orderBy(
+                'revenue_date'
+            )
             ->get()
-            ->map(fn($row) => [
-                'date' => $row->revenue_date,
-                'revenue' => (float) $row->revenue,
-                'orders_count' => (int) $row->orders_count,
-            ]);
+            ->keyBy(
+                'revenue_date'
+            );
+
+        return collect(
+            CarbonPeriod::create(
+                $startDate->toDateString(),
+                $endDate->toDateString()
+            )
+        )
+            ->map(
+                function ($date)
+                use ($revenues) {
+                    $dateString =
+                        $date->format(
+                            'Y-m-d'
+                        );
+
+                    $row =
+                        $revenues->get(
+                            $dateString
+                        );
+
+                    return [
+                        'date' =>
+                            $dateString,
+
+                        'revenue' =>
+                            $row
+                                ? (float)
+                                    $row->revenue
+                                : 0,
+
+                        'orders_count' =>
+                            $row
+                                ? (int)
+                                    $row->orders_count
+                                : 0,
+                    ];
+                }
+            )
+            ->values();
     }
 }

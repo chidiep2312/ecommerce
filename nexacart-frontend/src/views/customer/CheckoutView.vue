@@ -160,6 +160,7 @@ async function applyVoucher() {
             response.data?.message ??
             'Áp dụng voucher thành công.'
     } catch (error) {
+       
         appliedVoucher.value = null
 
         voucherDiscount.value = 0

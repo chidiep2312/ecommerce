@@ -498,6 +498,14 @@ Route::prefix('v1')->group(function () {
                 'profile',
             ]
         );
+         Route::get(
+            '/shop/fee',
+            [
+                ShopController::class,
+                'systemFee',
+            ]
+        );
+        
 
         Route::patch(
             '/shop/profile',

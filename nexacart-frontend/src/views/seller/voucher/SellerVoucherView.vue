@@ -79,6 +79,7 @@ async function fetchUsages() {
     errorMessage.value = ''
 
     try {
+      
         const response =
             await getSellerVoucherUsages({
                 page: filters.page,
@@ -106,7 +107,9 @@ async function fetchUsages() {
 
         pagination.value =
             response.data?.meta ?? null
+            
     } catch (error) {
+          
         usages.value = []
         pagination.value = null
 
@@ -227,12 +230,13 @@ function openOrder(orderId) {
     }
 
     router.push({
-        name: 'seller-order-detail',
+        name: 'seller-orders-detail',
         params: {
             id: orderId,
         },
     })
 }
+
 
 function formatCurrency(value) {
     return new Intl.NumberFormat(

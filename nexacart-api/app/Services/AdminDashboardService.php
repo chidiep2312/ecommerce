@@ -9,10 +9,15 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class AdminDashboardService
 {
+    private const PLATFORM_FEE_RATE = 0.05;
+
+    private const MIN_FEE_ORDER_TOTAL = 300000;
+
     public function getDashboard(): array
     {
         return [
@@ -20,7 +25,13 @@ class AdminDashboardService
             'order_statuses' => $this->getOrderStatuses(),
             'top_sellers' => $this->getTopSellers(),
             'top_products' => $this->getTopProducts(),
-            'daily_revenue' => $this->getDailyRevenue(),
+            'platform_fee' => [
+                'total' => $this->getTotalPlatformFee(),
+                'current_month' => $this->getCurrentMonthPlatformFee(),
+            ],
+            'daily_platform_fee' => $this->fillMissingFeeDates(
+                $this->getDailyPlatformFee()
+            ),
         ];
     }
 
@@ -48,16 +59,6 @@ class AdminDashboardService
             'completed_orders' => Order::query()
                 ->where('status', OrderStatus::Completed->value)
                 ->count(),
-
-            'completed_revenue' => (float) Order::query()
-                ->where('status', OrderStatus::Completed->value)
-                ->sum('total'),
-
-            'current_month_revenue' => (float) Order::query()
-                ->where('status', OrderStatus::Completed->value)
-                ->whereYear('completed_at', now()->year)
-                ->whereMonth('completed_at', now()->month)
-                ->sum('total'),
         ];
     }
 
@@ -69,89 +70,60 @@ class AdminDashboardService
             ->pluck('total', 'status');
 
         return collect(OrderStatus::cases())
-            ->mapWithKeys(
-                fn (OrderStatus $status) => [
-                    $status->value => (int) (
-                        $counts[$status->value] ?? 0
-                    ),
-                ],
-            )
+            ->mapWithKeys(fn (OrderStatus $status) => [
+                $status->value => (int) ($counts[$status->value] ?? 0),
+            ])
             ->all();
     }
 
     private function getTopSellers(): Collection
     {
         return Order::query()
-            ->join(
-                'users',
-                'users.id',
-                '=',
-                'orders.seller_id',
-            )
-            ->where(
-                'orders.status',
-                OrderStatus::Completed->value,
-            )
+            ->join('users', 'users.id', '=', 'orders.seller_id')
+            ->where('orders.status', OrderStatus::Completed->value)
             ->whereNull('orders.deleted_at')
+            ->whereNull('users.deleted_at')
             ->select([
                 'orders.seller_id',
                 'users.name as seller_name',
                 'users.email as seller_email',
             ])
-            ->selectRaw(
-                'COUNT(orders.id) as completed_orders',
-            )
-            ->selectRaw(
-                'SUM(orders.total) as total_revenue',
-            )
+            ->selectRaw('COUNT(orders.id) as completed_orders')
+            ->selectRaw('SUM(orders.total) as total_sales')
             ->groupBy(
                 'orders.seller_id',
                 'users.name',
-                'users.email',
+                'users.email'
             )
-            ->orderByDesc('total_revenue')
+            ->orderByDesc('total_sales')
             ->limit(5)
             ->get()
             ->map(fn ($seller) => [
                 'seller_id' => $seller->seller_id,
                 'seller_name' => $seller->seller_name,
                 'seller_email' => $seller->seller_email,
-                'completed_orders' =>
-                    (int) $seller->completed_orders,
-                'total_revenue' =>
-                    (float) $seller->total_revenue,
+                'completed_orders' => (int) $seller->completed_orders,
+                'total_sales' => (float) $seller->total_sales,
             ]);
     }
 
     private function getTopProducts(): Collection
     {
         return OrderItem::query()
-            ->join(
-                'orders',
-                'orders.id',
-                '=',
-                'order_items.order_id',
-            )
-            ->where(
-                'orders.status',
-                OrderStatus::Completed->value,
-            )
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('orders.status', OrderStatus::Completed->value)
             ->whereNull('orders.deleted_at')
             ->select([
                 'order_items.product_id',
                 'order_items.product_name',
                 'order_items.product_sku',
             ])
-            ->selectRaw(
-                'SUM(order_items.quantity) as total_quantity',
-            )
-            ->selectRaw(
-                'SUM(order_items.line_total) as total_revenue',
-            )
+            ->selectRaw('SUM(order_items.quantity) as total_quantity')
+            ->selectRaw('SUM(order_items.line_total) as total_sales')
             ->groupBy(
                 'order_items.product_id',
                 'order_items.product_name',
-                'order_items.product_sku',
+                'order_items.product_sku'
             )
             ->orderByDesc('total_quantity')
             ->limit(10)
@@ -160,64 +132,66 @@ class AdminDashboardService
                 'product_id' => $product->product_id,
                 'product_name' => $product->product_name,
                 'product_sku' => $product->product_sku,
-                'total_quantity' =>
-                    (int) $product->total_quantity,
-                'total_revenue' =>
-                    (float) $product->total_revenue,
+                'total_quantity' => (int) $product->total_quantity,
+                'total_sales' => (float) $product->total_sales,
             ]);
     }
 
-    private function getDailyRevenue(): Collection
+    private function feeEligibleOrders(): Builder
     {
         return Order::query()
-            ->where(
-                'status',
-                OrderStatus::Completed->value,
-            )
+            ->where('status', OrderStatus::Completed->value)
             ->whereNotNull('completed_at')
-            ->where(
-                'completed_at',
-                '>=',
-                now()->subDays(29)->startOfDay(),
-            )
-            ->selectRaw(
-                'DATE(completed_at) as revenue_date',
-            )
-            ->selectRaw('SUM(total) as revenue')
+            ->where('total', '>=', self::MIN_FEE_ORDER_TOTAL);
+    }
+
+    private function getTotalPlatformFee(): float
+    {
+        $sales = $this->feeEligibleOrders()->sum('total');
+
+        return (float) $sales * self::PLATFORM_FEE_RATE;
+    }
+
+    private function getCurrentMonthPlatformFee(): float
+    {
+        $sales = $this->feeEligibleOrders()
+            ->whereYear('completed_at', now()->year)
+            ->whereMonth('completed_at', now()->month)
+            ->sum('total');
+
+        return (float) $sales * self::PLATFORM_FEE_RATE;
+    }
+
+    private function getDailyPlatformFee(): Collection
+    {
+        return $this->feeEligibleOrders()
+            ->where('completed_at', '>=', now()->subDays(29)->startOfDay())
+            ->selectRaw('DATE(completed_at) as fee_date')
+            ->selectRaw('SUM(total) as eligible_sales')
             ->selectRaw('COUNT(*) as orders_count')
             ->groupByRaw('DATE(completed_at)')
-            ->orderBy('revenue_date')
+            ->orderBy('fee_date')
             ->get()
             ->map(fn ($row) => [
-                'date' => $row->revenue_date,
-                'revenue' => (float) $row->revenue,
+                'date' => $row->fee_date,
+                'fee' => (float) $row->eligible_sales * self::PLATFORM_FEE_RATE,
                 'orders_count' => (int) $row->orders_count,
             ]);
     }
 
-    private function fillMissingRevenueDates(
-        Collection $revenueRows,
-        int $days = 30,
+    private function fillMissingFeeDates(
+        Collection $feeRows,
+        int $days = 30
     ): Collection {
-        $revenueByDate = $revenueRows->keyBy('date');
+        $feesByDate = $feeRows->keyBy('date');
 
-        return collect(range(0, $days - 1))
-            ->map(
-                fn (int $offset) => now()
-                    ->subDays($days - 1 - $offset)
-                    ->toDateString(),
-            )
-            ->map(
-                function (string $date) use ($revenueByDate) {
-                    return $revenueByDate->get(
-                        $date,
-                        [
-                            'date' => $date,
-                            'revenue' => 0,
-                            'orders_count' => 0,
-                        ],
-                    );
-                },
-            );
+        return collect(range($days - 1, 0))
+            ->map(fn (int $daysAgo) => now()->subDays($daysAgo)->toDateString())
+            ->map(fn (string $date) => $feesByDate->get($date, [
+                'date' => $date,
+                'fee' => 0,
+                'orders_count' => 0,
+            ]))
+            ->values();
     }
 }

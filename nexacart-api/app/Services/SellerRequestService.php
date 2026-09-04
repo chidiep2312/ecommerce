@@ -18,22 +18,22 @@ class SellerRequestService
         User $user,
         ?string $reason = null
     ): SellerRequest {
-       
+
         if ($user->isSeller()) {
             throw ValidationException::withMessages([
                 'seller_request' =>
-                    'Tài khoản của bạn đã là người bán.',
+                'Tài khoản của bạn đã là người bán.',
             ]);
         }
 
         if ($user->isAdmin()) {
             throw ValidationException::withMessages([
                 'seller_request' =>
-                    'Tài khoản quản trị không thể đăng ký người bán.',
+                'Tài khoản quản trị không thể đăng ký người bán.',
             ]);
         }
 
-        
+
         $hasPendingRequest = $user
             ->sellerRequests()
             ->where(
@@ -45,7 +45,7 @@ class SellerRequestService
         if ($hasPendingRequest) {
             throw ValidationException::withMessages([
                 'seller_request' =>
-                    'Bạn đã có yêu cầu đang chờ quản trị viên duyệt.',
+                'Bạn đã có yêu cầu đang chờ quản trị viên duyệt.',
             ]);
         }
 
@@ -53,10 +53,10 @@ class SellerRequestService
             ->sellerRequests()
             ->create([
                 'status' =>
-                    SellerRequestStatus::Pending,
+                SellerRequestStatus::Pending,
 
                 'reason' =>
-                    $reason,
+                $reason,
             ]);
     }
 
@@ -69,27 +69,27 @@ class SellerRequestService
                 $sellerRequest,
                 $reviewer
             ) {
-                
+
                 $lockedRequest =
                     SellerRequest::query()
-                        ->whereKey(
-                            $sellerRequest->id
-                        )
-                        ->lockForUpdate()
-                        ->firstOrFail();
+                    ->whereKey(
+                        $sellerRequest->id
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-               
+
                 if (
                     $lockedRequest->status !==
                     SellerRequestStatus::Pending
                 ) {
                     throw ValidationException::withMessages([
                         'seller_request' =>
-                            'Yêu cầu này đã được xử lý.',
+                        'Yêu cầu này đã được xử lý.',
                     ]);
                 }
 
-               
+
                 $user = User::query()
                     ->whereKey(
                         $lockedRequest->user_id
@@ -100,47 +100,47 @@ class SellerRequestService
                 if ($user->isSeller()) {
                     throw ValidationException::withMessages([
                         'seller_request' =>
-                            'Người dùng này đã là người bán.',
+                        'Người dùng này đã là người bán.',
                     ]);
                 }
 
-             
+
                 $lockedRequest->update([
                     'status' =>
-                        SellerRequestStatus::Approved,
+                    SellerRequestStatus::Approved,
 
                     'reviewed_by' =>
-                        $reviewer->id,
+                    $reviewer->id,
 
                     'reviewed_at' =>
-                        now(),
+                    now(),
 
                     'rejection_reason' =>
-                        null,
+                    null,
                 ]);
 
-             
+
                 $user->update([
                     'role' =>
-                        UserRole::Seller,
+                    UserRole::Seller,
                 ]);
 
-              
+
                 $user->shop()
                     ->firstOrCreate(
                         [],
                         [
                             'name' =>
-                                $user->name,
+                            $user->name,
 
                             'slug' =>
-                                $this
-                                    ->generateShopSlug(
-                                        $user->name
-                                    ),
+                            $this
+                                ->generateShopSlug(
+                                    $user->name
+                                ),
 
                             'status' =>
-                                ShopStatus::Active,
+                            ShopStatus::Active,
                         ]
                     );
 
@@ -167,11 +167,11 @@ class SellerRequestService
             ) {
                 $lockedRequest =
                     SellerRequest::query()
-                        ->whereKey(
-                            $sellerRequest->id
-                        )
-                        ->lockForUpdate()
-                        ->firstOrFail();
+                    ->whereKey(
+                        $sellerRequest->id
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
                 if (
                     $lockedRequest->status !==
@@ -179,22 +179,22 @@ class SellerRequestService
                 ) {
                     throw ValidationException::withMessages([
                         'seller_request' =>
-                            'Yêu cầu này đã được xử lý.',
+                        'Yêu cầu này đã được xử lý.',
                     ]);
                 }
 
                 $lockedRequest->update([
                     'status' =>
-                        SellerRequestStatus::Rejected,
+                    SellerRequestStatus::Rejected,
 
                     'rejection_reason' =>
-                        $rejectionReason,
+                    $rejectionReason,
 
                     'reviewed_by' =>
-                        $reviewer->id,
+                    $reviewer->id,
 
                     'reviewed_at' =>
-                        now(),
+                    now(),
                 ]);
 
                 return $lockedRequest
@@ -214,10 +214,7 @@ class SellerRequestService
             $name
         );
 
-        /*
-         * Trường hợp tên toàn ký tự đặc biệt
-         * khiến Str::slug() trả chuỗi rỗng.
-         */
+    
         if ($baseSlug === '') {
             $baseSlug = 'shop';
         }
@@ -228,11 +225,11 @@ class SellerRequestService
 
         while (
             Shop::query()
-                ->where(
-                    'slug',
-                    $slug
-                )
-                ->exists()
+            ->where(
+                'slug',
+                $slug
+            )
+            ->exists()
         ) {
             $slug =
                 $baseSlug .

@@ -4,7 +4,6 @@ import {
     CheckCircle2,
     Headphones,
     Heart,
-    PackageCheck,
     ShieldCheck,
     ShoppingBag,
     Sparkles,
@@ -25,25 +24,11 @@ import {
     useRouter,
 } from 'vue-router'
 
-import ProductCard
-    from '@/components/customer/ProductCard.vue'
-
-import {
-    getProducts,
-} from '@/api/products'
-
-import {
-    addToWishlist,
-    removeFromWishlist,
-} from '@/api/wishlist'
-
-import {
-    useCartStore,
-} from '@/stores/cart'
-
-import {
-    useAuthStore,
-} from '@/stores/auth'
+import ProductCard from '@/components/customer/ProductCard.vue'
+import { getProducts } from '@/api/products'
+import { addToWishlist, removeFromWishlist } from '@/api/wishlist'
+import { useCartStore } from '@/stores/cart'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,351 +50,166 @@ const successMessage = ref('')
 const categories = computed(() => {
     const map = new Map()
 
-    products.value.forEach(
-        product => {
-            const category =
-                product.category
+    products.value.forEach(product => {
+        const category = product.category
+        if (category?.id && !map.has(category.id)) {
+            map.set(category.id, category)
+        }
+    })
 
-            if (
-                category?.id &&
-                !map.has(category.id)
-            ) {
-                map.set(
-                    category.id,
-                    category,
-                )
-            }
-        },
-    )
-
-    return [
-        ...map.values(),
-    ].slice(0, 4)
+    return [...map.values()].slice(0, 4)
 })
 
-const featuredProduct =
-    computed(() => {
-        return (
-            products.value[0] ??
-            null
-        )
-    })
+const featuredProduct = computed(() => {
+    return products.value[0] ?? null
+})
 
-const secondaryProducts =
-    computed(() => {
-        return products.value
-            .slice(1, 5)
-    })
+const secondaryProducts = computed(() => {
+    return products.value.slice(1, 5)
+})
 
-const totalProducts =
-    computed(() => {
-        return Number(
-            productMeta.value
-                ?.total ??
-            products.value.length,
-        )
-    })
+const totalProducts = computed(() => {
+    return Number(productMeta.value?.total ?? products.value.length)
+})
 
-const loadedReviewCount =
-    computed(() => {
-        return products.value.reduce(
-            (
-                total,
-                product,
-            ) => {
-                return (
-                    total +
-                    Number(
-                        product
-                            .reviews_count ??
-                        0,
-                    )
-                )
-            },
-            0,
-        )
-    })
+const loadedReviewCount = computed(() => {
+    return products.value.reduce((total, product) => {
+        return total + Number(product.reviews_count ?? 0)
+    }, 0)
+})
 
-const averageRating =
-    computed(() => {
-        const ratings =
-            products.value
-                .map(
-                    product => {
-                        return Number(
-                            product
-                                .average_rating ??
-                            0,
-                        )
-                    },
-                )
-                .filter(
-                    rating => {
-                        return rating > 0
-                    },
-                )
+const averageRating = computed(() => {
+    const ratings = products.value
+        .map(product => Number(product.average_rating ?? 0))
+        .filter(rating => rating > 0)
 
-        if (!ratings.length) {
-            return '0.0'
-        }
+    if (!ratings.length) {
+        return '0.0'
+    }
 
-        const total =
-            ratings.reduce(
-                (
-                    sum,
-                    rating,
-                ) => {
-                    return (
-                        sum +
-                        rating
-                    )
-                },
-                0,
-            )
+    const total = ratings.reduce((sum, rating) => sum + rating, 0)
+    return (total / ratings.length).toFixed(1)
+})
 
-        return (
-            total /
-            ratings.length
-        ).toFixed(1)
-    })
-
-const featuredReviews =
-    computed(() => {
-        return products.value
-            .flatMap(
-                product => {
-                    const reviews =
-                        Array.isArray(
-                            product.reviews,
-                        )
-                            ? product.reviews
-                            : []
-
-                    return reviews.map(
-                        review => {
-                            return {
-                                ...review,
-
-                                product_name:
-                                    product.name,
-
-                                product_slug:
-                                    product.slug,
-                            }
-                        },
-                    )
-                },
-            )
-            .filter(
-                review => {
-                    return Boolean(
-                        review.comment,
-                    )
-                },
-            )
-            .slice(0, 3)
-    })
+const featuredReviews = computed(() => {
+    return products.value
+        .flatMap(product => {
+            const reviews = Array.isArray(product.reviews) ? product.reviews : []
+            return reviews.map(review => ({
+                ...review,
+                product_name: product.name,
+                product_slug: product.slug,
+            }))
+        })
+        .filter(review => Boolean(review.comment))
+        .slice(0, 3)
+})
 
 const benefits = [
     {
-        title:
-            'Nguồn hàng đa dạng',
-
-        description:
-            'Khám phá nhiều sản phẩm từ nhiều nhà bán hàng khác nhau.',
-
-        icon:
-            Store,
+        title: 'Nguồn hàng đa dạng',
+        description: 'Sản phẩm chọn lọc từ các nhà bán hàng uy tín.',
+        icon: Store,
     },
-
     {
-        title:
-            'Giá minh bạch',
-
-        description:
-            'Giá sản phẩm và chương trình giảm giá được hiển thị rõ ràng.',
-
-        icon:
-            Tags,
+        title: 'Giá cả minh bạch',
+        description: 'Giá niêm yết rõ ràng, nhiều ưu đãi hấp dẫn.',
+        icon: Tags,
     },
-
     {
-        title:
-            'Theo dõi đơn hàng',
-
-        description:
-            'Theo dõi quá trình xác nhận, vận chuyển và hoàn tất đơn hàng.',
-
-        icon:
-            Truck,
+        title: 'Giao hàng tin cậy',
+        description: 'Đóng gói cẩn thận, theo dõi lộ trình trực tiếp.',
+        icon: Truck,
     },
-
     {
-        title:
-            'Hỗ trợ thuận tiện',
-
-        description:
-            'Quản lý tài khoản, wishlist, địa chỉ và đơn hàng trong một nơi.',
-
-        icon:
-            Headphones,
+        title: 'Hỗ trợ chu đáo',
+        description: 'Dễ dàng tra cứu đơn hàng và đổi trả tiện lợi.',
+        icon: Headphones,
     },
 ]
 
 async function fetchProducts() {
-    isLoadingProducts.value =
-        true
-
+    isLoadingProducts.value = true
     errorMessage.value = ''
 
     try {
-        const response =
-            await getProducts({
-                per_page: 8,
-                sort: 'newest',
-            })
-            console.log(response)
+        const response = await getProducts({
+            per_page: 8,
+            sort: 'newest',
+        })
 
-        products.value =
-            Array.isArray(
-                response.data?.data,
-            )
-                ? response.data.data
-                : []
+        products.value = Array.isArray(response.data?.data)
+            ? response.data.data
+            : []
 
-        productMeta.value =
-            response.data?.meta ??
-            null
+        productMeta.value = response.data?.meta ?? null
     } catch (error) {
-        console.error(
-            'Không thể tải sản phẩm:',
-            error,
-        )
-
+        console.error('Không thể tải sản phẩm:', error)
         products.value = []
         productMeta.value = null
-
-        errorMessage.value =
-            error.response?.data
-                ?.message ??
-            'Không thể tải sản phẩm.'
+        errorMessage.value = error.response?.data?.message ?? 'Không thể tải sản phẩm.'
     } finally {
-        isLoadingProducts.value =
-            false
+        isLoadingProducts.value = false
     }
 }
 
-async function handleAddToCart(
-    product,
-) {
-    if (
-        !product ||
-        cartLoadingId.value
-    ) {
-        return
-    }
-
-    cartLoadingId.value =
-        product.id
-
+async function handleAddToCart(product) {
+    if (!product || cartLoadingId.value) return
+    cartLoadingId.value = product.id
     errorMessage.value = ''
     successMessage.value = ''
 
     try {
-        await cartStore.addItem(
-            product.id,
-            1,
-        )
-
-        successMessage.value =
-            `Đã thêm "${product.name}" vào giỏ hàng.`
+        await cartStore.addItem(product.id, 1)
+        successMessage.value = `Đã thêm "${product.name}" vào giỏ hàng.`
     } catch (error) {
         errorMessage.value =
-            error.response?.data
-                ?.message ??
+            error.response?.data?.message ??
             error.message ??
             'Không thể thêm sản phẩm vào giỏ hàng.'
     } finally {
-        cartLoadingId.value =
-            null
+        cartLoadingId.value = null
     }
 }
 
-async function handleToggleWishlist(
-    product,
-) {
-    if (!product) {
-        return
-    }
+async function handleToggleWishlist(product) {
+    if (!product) return
 
     if (!authStore.isAuthenticated) {
         router.push({
             name: 'login',
-
-            query: {
-                redirect:
-                    route.fullPath,
-            },
+            query: { redirect: route.fullPath },
         })
-
         return
     }
 
-    if (wishlistLoadingId.value) {
-        return
-    }
-
-    wishlistLoadingId.value =
-        product.id
-
+    if (wishlistLoadingId.value) return
+    wishlistLoadingId.value = product.id
     errorMessage.value = ''
     successMessage.value = ''
 
     try {
-        if (
-            product.is_wishlisted
-        ) {
-            await removeFromWishlist(
-                product.id,
-            )
-
-            product.is_wishlisted =
-                false
-
-            successMessage.value =
-                'Đã bỏ sản phẩm khỏi danh sách yêu thích.'
+        if (product.is_wishlisted) {
+            await removeFromWishlist(product.id)
+            product.is_wishlisted = false
+            successMessage.value = 'Đã bỏ sản phẩm khỏi danh sách yêu thích.'
         } else {
-            await addToWishlist(
-                product.id,
-            )
-
-            product.is_wishlisted =
-                true
-
-            successMessage.value =
-                'Đã thêm sản phẩm vào danh sách yêu thích.'
+            await addToWishlist(product.id)
+            product.is_wishlisted = true
+            successMessage.value = 'Đã thêm sản phẩm vào danh sách yêu thích.'
         }
     } catch (error) {
         errorMessage.value =
-            error.response?.data
-                ?.message ??
+            error.response?.data?.message ??
             'Không thể cập nhật danh sách yêu thích.'
     } finally {
-        wishlistLoadingId.value =
-            null
+        wishlistLoadingId.value = null
     }
 }
 
 function getImageUrl(product) {
-    if (!product) {
-        return ''
-    }
-
-    return (
-        product.main_image?.url ??
-        product.main_image?.path ??
-        ''
-    )
+    if (!product) return ''
+    return product.main_image?.url ?? product.main_image?.path ?? ''
 }
 
 function getCurrentPrice(product) {
@@ -422,42 +222,22 @@ function getCurrentPrice(product) {
 }
 
 function formatPrice(value) {
-    return new Intl.NumberFormat(
-        'vi-VN',
-        {
-            style: 'currency',
-            currency: 'VND',
-            maximumFractionDigits: 0,
-        },
-    ).format(
-        Number(value ?? 0),
-    )
+    return new Intl.NumberFormat('vi-VN', {
+        style: 'currency',
+        currency: 'VND',
+        maximumFractionDigits: 0,
+    }).format(Number(value ?? 0))
 }
 
 function formatReviewDate(value) {
-    if (!value) {
-        return ''
-    }
-
-    const date =
-        new Date(value)
-
-    if (
-        Number.isNaN(
-            date.getTime(),
-        )
-    ) {
-        return ''
-    }
-
-    return new Intl.DateTimeFormat(
-        'vi-VN',
-        {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-        },
-    ).format(date)
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    }).format(date)
 }
 
 onMounted(() => {
@@ -466,2297 +246,965 @@ onMounted(() => {
 </script>
 
 <template>
-    <main class="home-page">
-        <!-- MESSAGE -->
-
-        <div
-            v-if="errorMessage"
-            class="home-alert home-alert--error"
-        >
-            {{ errorMessage }}
+    <main class="clean-ecom">
+        <!-- 1. Marquee Ticker (Dải chữ chạy vô hạn - Nền sáng Xanh Mint) -->
+        <div class="marquee-ribbon">
+            <div class="ticker-content">
+                <span>★ NEXACART MULTI-STORE</span>
+                <span>• GIAO HÀNG HỎA TỐC 2H</span>
+                <span>• 100% HÀNG CHÍNH HÃNG</span>
+                <span>• ĐỔI TRẢ TRONG 7 NGÀY</span>
+                <span>★ DEAL ĐỘC QUYỀN MỖI NGÀY</span>
+                <span>• BẢO HÀNH TOÀN QUỐC</span>
+                <span>★ NEXACART MULTI-STORE</span>
+                <span>• GIAO HÀNG HỎA TỐC 2H</span>
+                <span>• 100% HÀNG CHÍNH HÃNG</span>
+                <span>• ĐỔI TRẢ TRONG 7 NGÀY</span>
+            </div>
         </div>
 
-        <div
-            v-if="successMessage"
-            class="home-alert home-alert--success"
-        >
-            {{ successMessage }}
+        <!-- Thông Báo -->
+        <div v-if="errorMessage" class="notice-box notice-error">
+            <span>{{ errorMessage }}</span>
         </div>
 
-        <!-- =====================
-             HERO
-        ====================== -->
+        <div v-if="successMessage" class="notice-box notice-success">
+            <CheckCircle2 :size="16" />
+            <span>{{ successMessage }}</span>
+        </div>
 
-        <section class="hero">
-            <div class="hero__content">
-                <div class="hero__badge">
-                    <Sparkles
-                        :size="14"
-                    />
-
-                    <span>
-                        NỀN TẢNG MUA SẮM ĐA NHÀ BÁN
-                    </span>
+        <!-- ========================================
+             2. HERO ASYMMETRIC (Phá Cách & Tươi Sáng)
+        ======================================== -->
+        <section class="hero-showcase-stage">
+            <!-- Cột Trái: Typography Lớn & Thao Tác -->
+            <div class="hero-left-col">
+                <div class="meta-tag-group">
+                    <span class="tag-badge">BỘ SƯU TẬP 2026</span>
+                    <span class="tag-text">NỀN TẢNG THƯƠNG MẠI CHỌN LỌC</span>
                 </div>
 
-                <h1>
-                    Nguồn hàng đa dạng
-                    <br>
-
-                    cho
-
-                    <span>
-                        mọi lựa chọn
-                    </span>
+                <h1 class="hero-big-title">
+                    ĐA DẠNG<br />
+                    <span class="title-accent">LỰA CHỌN</span><br />
+                    <span class="title-emerald">MỖI NGÀY.</span>
                 </h1>
 
-                <p class="hero__description">
-                    NexaCart kết nối khách hàng với
-                    nhiều nhà bán hàng, giúp bạn
-                    khám phá sản phẩm, so sánh giá,
-                    xem đánh giá và quản lý đơn hàng
-                    trong cùng một nền tảng.
+                <p class="hero-intro">
+                    Khám phá hàng ngàn mặt hàng từ các nhà bán hàng đối tác tuyển chọn. Giá tốt mỗi ngày, giao hàng hỏa tốc và quy trình mua sắm minh bạch.
                 </p>
 
-                <div class="hero__features">
-                    <article>
-                        <span>
-                            <ShieldCheck
-                                :size="19"
-                            />
-                        </span>
-
-                        <div>
-                            <strong>
-                                Mua sắm an toàn
-                            </strong>
-
-                            <small>
-                                Thông tin rõ ràng
-                            </small>
-                        </div>
-                    </article>
-
-                    <article>
-                        <span>
-                            <Truck
-                                :size="19"
-                            />
-                        </span>
-
-                        <div>
-                            <strong>
-                                Theo dõi giao hàng
-                            </strong>
-
-                            <small>
-                                Cập nhật trạng thái
-                            </small>
-                        </div>
-                    </article>
-
-                    <article>
-                        <span>
-                            <Tags
-                                :size="19"
-                            />
-                        </span>
-
-                        <div>
-                            <strong>
-                                Giá minh bạch
-                            </strong>
-
-                            <small>
-                                Dễ dàng so sánh
-                            </small>
-                        </div>
-                    </article>
-                </div>
-
-                <div class="hero__actions">
-                    <RouterLink
-                        :to="{
-                            name: 'products',
-                        }"
-                        class="button button--primary"
-                    >
-                        Mua hàng ngay
-
-                        <ArrowRight
-                            :size="17"
-                        />
+                <div class="hero-btn-row">
+                    <RouterLink :to="{ name: 'products' }" class="btn-action btn-green">
+                        <span>Khám phá sản phẩm</span>
+                        <ArrowRight :size="16" />
                     </RouterLink>
-
-                    <RouterLink
-                        :to="{
-                            name:
-                                'customer-profile',
-                        }"
-                        class="button button--secondary"
-                    >
-                        Trở thành người bán
+                    <RouterLink :to="{ name: 'customer-profile' }" class="btn-action btn-light">
+                        <span>Kênh bán hàng</span>
                     </RouterLink>
                 </div>
             </div>
 
-            <!-- HERO VISUAL -->
-
-            <div class="hero__visual">
-                <div class="hero-background" />
-
+            <!-- Cột Phải: Khung Trưng Bày Sản Phẩm Nổi Bật -->
+            <div class="hero-right-col">
                 <RouterLink
-                    v-if="
-                        featuredProduct
-                    "
-                    :to="{
-                        name:
-                            'product-detail',
-
-                        params: {
-                            slug:
-                                featuredProduct
-                                    .slug,
-                        },
-                    }"
-                    class="hero-main-product"
+                    v-if="featuredProduct"
+                    :to="{ name: 'product-detail', params: { slug: featuredProduct.slug } }"
+                    class="featured-frame"
                 >
-                    <img
-                        v-if="
-                            getImageUrl(
-                                featuredProduct,
-                            )
-                        "
-                        :src="
-                            getImageUrl(
-                                featuredProduct,
-                            )
-                        "
-                        :alt="
-                            featuredProduct
-                                .name
-                        "
-                    >
+                    <div class="sticker-tag">NỔI BẬT HÔM NAY</div>
 
-                    <div
-                        v-else
-                        class="hero-image-placeholder"
-                    >
-                        <ShoppingBag
-                            :size="70"
-                        />
-                    </div>
-
-                    <div class="hero-main-product__label">
-                        Nổi bật hôm nay
-                    </div>
-
-                    <div class="hero-main-product__info">
-                        <span>
-                            {{
-                                featuredProduct
-                                    .category
-                                    ?.name ??
-                                'Sản phẩm'
-                            }}
-                        </span>
-
-                        <strong>
-                            {{
-                                featuredProduct
-                                    .name
-                            }}
-                        </strong>
-
-                        <b>
-                            {{
-                                formatPrice(
-                                    getCurrentPrice(
-                                        featuredProduct,
-                                    ),
-                                )
-                            }}
-                        </b>
-                    </div>
-                </RouterLink>
-
-                <div
-                    v-if="
-                        secondaryProducts
-                            .length
-                    "
-                    class="hero-side-products"
-                >
-                    <RouterLink
-                        v-for="
-                            product in
-                            secondaryProducts
-                                .slice(
-                                    0,
-                                    2,
-                                )
-                        "
-                        :key="
-                            product.id
-                        "
-                        :to="{
-                            name:
-                                'product-detail',
-
-                            params: {
-                                slug:
-                                    product.slug,
-                            },
-                        }"
-                        class="hero-side-product"
-                    >
+                    <div class="image-stage">
                         <img
-                            v-if="
-                                getImageUrl(
-                                    product,
-                                )
-                            "
-                            :src="
-                                getImageUrl(
-                                    product,
-                                )
-                            "
-                            :alt="
-                                product.name
-                            "
-                        >
-
-                        <div
-                            v-else
-                            class="hero-side-product__empty"
-                        >
-                            <ShoppingBag
-                                :size="23"
-                            />
+                            v-if="getImageUrl(featuredProduct)"
+                            :src="getImageUrl(featuredProduct)"
+                            :alt="featuredProduct.name"
+                        />
+                        <div v-else class="stage-placeholder">
+                            <ShoppingBag :size="50" />
                         </div>
+                    </div>
 
-                        <div>
-                            <strong>
-                                {{
-                                    product.name
-                                }}
-                            </strong>
+                    <div class="caption-bar">
+                        <div class="caption-text">
+                            <span class="caption-category">{{ featuredProduct.category?.name ?? 'SẢN PHẨM' }}</span>
+                            <h3 class="caption-title">{{ featuredProduct.name }}</h3>
+                        </div>
+                        <div class="caption-price">
+                            {{ formatPrice(getCurrentPrice(featuredProduct)) }}
+                        </div>
+                    </div>
+                </RouterLink>
 
-                            <span>
-                                {{
-                                    formatPrice(
-                                        getCurrentPrice(
-                                            product,
-                                        ),
-                                    )
-                                }}
-                            </span>
+                <!-- 2 Sản Phẩm Gợi Ý Phía Dưới -->
+                <div v-if="secondaryProducts.length" class="secondary-items-grid">
+                    <RouterLink
+                        v-for="product in secondaryProducts.slice(0, 2)"
+                        :key="product.id"
+                        :to="{ name: 'product-detail', params: { slug: product.slug } }"
+                        class="secondary-tile"
+                    >
+                        <div class="tile-thumb">
+                            <img v-if="getImageUrl(product)" :src="getImageUrl(product)" :alt="product.name" />
+                            <ShoppingBag v-else :size="16" />
+                        </div>
+                        <div class="tile-info">
+                            <h4 class="tile-title">{{ product.name }}</h4>
+                            <span class="tile-price">{{ formatPrice(getCurrentPrice(product)) }}</span>
                         </div>
                     </RouterLink>
                 </div>
+            </div>
+        </section>
 
-                <div class="delivery-card">
-                    <div class="delivery-card__icon">
-                        <Truck
-                            :size="21"
-                        />
-                    </div>
-
-                    <div>
-                        <strong>
-                            Giao hàng được theo dõi
-                        </strong>
-
-                        <span>
-                            Kiểm tra trạng thái đơn hàng
-                            ngay trong tài khoản
-                        </span>
-                    </div>
+        <!-- ========================================
+             3. THANH CAM KẾT (01 – 04)
+        ======================================== -->
+        <section class="commitments-row">
+            <div v-for="(benefit, index) in benefits" :key="benefit.title" class="commitment-card">
+                <span class="card-num">0{{ index + 1 }}</span>
+                <div class="card-body">
+                    <h3 class="card-heading">{{ benefit.title }}</h3>
+                    <p class="card-desc">{{ benefit.description }}</p>
                 </div>
             </div>
         </section>
 
-        <!-- =====================
-             WHY NEXACART
-        ====================== -->
-
-        <section class="benefit-section">
-            <header class="center-heading">
-                <h2>
-                    VÌ SAO CHỌN NEXACART?
-                </h2>
-
-                <span />
-            </header>
-
-            <div class="benefit-grid">
-                <article
-                    v-for="
-                        benefit in
-                        benefits
-                    "
-                    :key="
-                        benefit.title
-                    "
-                >
-                    <div class="benefit-grid__icon">
-                        <component
-                            :is="
-                                benefit.icon
-                            "
-                            :size="21"
-                        />
-                    </div>
-
-                    <div>
-                        <strong>
-                            {{
-                                benefit.title
-                            }}
-                        </strong>
-
-                        <p>
-                            {{
-                                benefit
-                                    .description
-                            }}
-                        </p>
-                    </div>
-                </article>
-            </div>
-        </section>
-
-        <!-- =====================
-             CATEGORIES
-        ====================== -->
-
-        <section class="category-section">
-            <header class="center-heading">
-                <h2>
-                    Khám phá theo danh mục
-                </h2>
-
-                <p>
-                    Chọn nhanh nhóm sản phẩm
-                    phù hợp với nhu cầu của bạn
-                </p>
-
-                <span />
-            </header>
-
-            <div
-                v-if="
-                    categories.length
-                "
-                class="category-showcase"
-            >
-                <RouterLink
-                    v-for="
-                        category in
-                        categories
-                    "
-                    :key="
-                        category.id
-                    "
-                    :to="{
-                        name:
-                            'products',
-
-                        query: {
-                            category:
-                                category.slug,
-                        },
-                    }"
-                    class="business-card"
-                >
-                    <div class="business-card__visual">
-                        <Store
-                            :size="48"
-                        />
-                    </div>
-
-                    <div class="business-card__content">
-                        <div class="business-card__icon">
-                            <ShoppingBag
-                                :size="17"
-                            />
-                        </div>
-
-                        <strong>
-                            {{
-                                category.name
-                            }}
-                        </strong>
-
-                        <p>
-                            Khám phá những sản phẩm
-                            thuộc danh mục
-                            {{
-                                category.name
-                            }}.
-                        </p>
-                    </div>
-                </RouterLink>
-            </div>
-        </section>
-
-        <!-- =====================
-             PRODUCTS
-        ====================== -->
-
-        <section class="product-section">
-            <header class="section-heading">
-                <div>
-                    <span>
-                        SẢN PHẨM MỚI
-                    </span>
-
-                    <h2>
-                        Khám phá sản phẩm
-                        trên NexaCart
-                    </h2>
+        <!-- ========================================
+             4. DANH MỤC INDEX (01 – 04)
+        ======================================== -->
+        <section class="section-container">
+            <header class="section-top-bar">
+                <div class="top-bar-title">
+                    <span class="label-pill">DANH MỤC</span>
+                    <h2>Ngành Hàng Nổi Bật</h2>
                 </div>
+            </header>
 
+            <div v-if="categories.length" class="category-index-grid">
                 <RouterLink
-                    :to="{
-                        name:
-                            'products',
-                    }"
+                    v-for="(category, idx) in categories"
+                    :key="category.id"
+                    :to="{ name: 'products', query: { category: category.slug } }"
+                    class="index-card"
                 >
-                    Xem tất cả
+                    <div class="index-card-head">
+                        <span class="index-number">0{{ idx + 1 }}</span>
+                        <ArrowRight :size="18" class="index-arrow" />
+                    </div>
+                    <div class="index-card-foot">
+                        <h3 class="index-title">{{ category.name }}</h3>
+                        <span class="index-link">Khám phá bộ sưu tập &rarr;</span>
+                    </div>
+                    <div class="card-hover-indicator"></div>
+                </RouterLink>
+            </div>
+        </section>
 
-                    <ArrowRight
-                        :size="16"
-                    />
+        <!-- ========================================
+             5. SẢN PHẨM MỚI (PRODUCTS)
+        ======================================== -->
+        <section class="section-container">
+            <header class="section-top-bar">
+                <div class="top-bar-title">
+                    <span class="label-pill">BỘ SƯU TẬP MỚI</span>
+                    <h2>Sản Phẩm Vừa Cập Nhật</h2>
+                </div>
+                <RouterLink :to="{ name: 'products' }" class="see-all-link">
+                    <span>Xem tất cả gian hàng</span>
+                    <ArrowRight :size="16" />
                 </RouterLink>
             </header>
 
-            <div
-                v-if="
-                    isLoadingProducts
-                "
-                class="product-loading"
-            >
-                <article
-                    v-for="
-                        item in 8
-                    "
-                    :key="item"
-                    class="product-skeleton"
-                >
-                    <div
-                        class="product-skeleton__image"
-                    />
-
-                    <div
-                        class="product-skeleton__line"
-                    />
-
-                    <div
-                        class="product-skeleton__line product-skeleton__line--short"
-                    />
-                </article>
+            <!-- Skeleton Loading -->
+            <div v-if="isLoadingProducts" class="products-grid-view">
+                <div v-for="i in 8" :key="i" class="product-skeleton-card">
+                    <div class="skeleton-image"></div>
+                    <div class="skeleton-line full"></div>
+                    <div class="skeleton-line short"></div>
+                </div>
             </div>
 
-            <div
-                v-else-if="
-                    products.length ===
-                    0
-                "
-                class="product-empty"
-            >
-                <ShoppingBag
-                    :size="34"
-                />
-
-                <strong>
-                    Chưa có sản phẩm
-                </strong>
+            <!-- Empty -->
+            <div v-else-if="products.length === 0" class="empty-view">
+                <ShoppingBag :size="36" />
+                <p>Chưa có sản phẩm nào được bày bán.</p>
             </div>
 
-            <div
-                v-else
-                class="product-grid"
-            >
+            <!-- Grid Sản Phẩm -->
+            <div v-else class="products-grid-view">
                 <ProductCard
-                    v-for="
-                        product in
-                        products
-                    "
-                    :key="
-                        product.id
-                    "
-                    :product="
-                        product
-                    "
-                    :wishlist-loading="
-                        wishlistLoadingId ===
-                        product.id
-                    "
-                    :cart-loading="
-                        cartLoadingId ===
-                        product.id
-                    "
-                    @add-to-cart="
-                        handleAddToCart
-                    "
-                    @toggle-wishlist="
-                        handleToggleWishlist
-                    "
+                    v-for="product in products"
+                    :key="product.id"
+                    :product="product"
+                    :wishlist-loading="wishlistLoadingId === product.id"
+                    :cart-loading="cartLoadingId === product.id"
+                    @add-to-cart="handleAddToCart"
+                    @toggle-wishlist="handleToggleWishlist"
                 />
             </div>
         </section>
 
-        <!-- =====================
-             STATS
-        ====================== -->
-
-        <section class="stats-section">
-            <article>
-                <ShoppingBag
-                    :size="24"
-                />
-
-                <div>
-                    <strong>
-                        {{
-                            totalProducts
-                        }}+
-                    </strong>
-
-                    <span>
-                        Sản phẩm trên hệ thống
-                    </span>
-                </div>
-            </article>
-
-            <article>
-                <Star
-                    :size="24"
-                    fill="currentColor"
-                />
-
-                <div>
-                    <strong>
-                        {{
-                            averageRating
-                        }}/5
-                    </strong>
-
-                    <span>
-                        Điểm đánh giá trung bình
-                    </span>
-                </div>
-            </article>
-
-            <article>
-                <Heart
-                    :size="24"
-                />
-
-                <div>
-                    <strong>
-                        {{
-                            loadedReviewCount
-                        }}+
-                    </strong>
-
-                    <span>
-                        Lượt đánh giá
-                    </span>
-                </div>
-            </article>
-
-            <article>
-                <Store
-                    :size="24"
-                />
-
-                <div>
-                    <strong>
-                        {{
-                            categories.length
-                        }}+
-                    </strong>
-
-                    <span>
-                        Danh mục đang hiển thị
-                    </span>
-                </div>
-            </article>
+        <!-- ========================================
+             6. DẢI CHỈ SỐ LỚN (BIG NUMBERS)
+        ======================================== -->
+        <section class="metrics-strip">
+            <div class="metric-item">
+                <strong class="metric-val">{{ totalProducts }}+</strong>
+                <span class="metric-lbl">Sản phẩm sẵn có</span>
+            </div>
+            <div class="metric-item">
+                <strong class="metric-val green-text">{{ averageRating }}★</strong>
+                <span class="metric-lbl">Điểm đánh giá trung bình</span>
+            </div>
+            <div class="metric-item">
+                <strong class="metric-val">{{ loadedReviewCount }}+</strong>
+                <span class="metric-lbl">Lượt phản hồi xác thực</span>
+            </div>
+            <div class="metric-item">
+                <strong class="metric-val">{{ categories.length }}+</strong>
+                <span class="metric-lbl">Danh mục hàng hóa</span>
+            </div>
         </section>
 
-        <!-- =====================
-             REVIEWS
-        ====================== -->
-
-        <section class="review-section">
-            <header class="center-heading">
-                <h2>
-                    Khách hàng nói gì
-                    về NexaCart
-                </h2>
-
-                <span />
+        <!-- ========================================
+             7. ĐÁNH GIÁ TẠP CHÍ (EDITORIAL REVIEWS)
+        ======================================== -->
+        <section class="section-container">
+            <header class="section-top-bar">
+                <div class="top-bar-title">
+                    <span class="label-pill">Ý KIẾN KHÁCH HÀNG</span>
+                    <h2>Trải Nghiệm Mua Sắm Thực Tế</h2>
+                </div>
             </header>
 
-            <div
-                v-if="
-                    featuredReviews.length
-                "
-                class="review-grid"
-            >
-                <article
-                    v-for="
-                        review in
-                        featuredReviews
-                    "
-                    :key="
-                        review.id
-                    "
-                    class="review-card"
-                >
-                    <div class="review-card__quote">
-                        “
-                    </div>
-
-                    <div class="review-card__stars">
+            <div v-if="featuredReviews.length" class="editorial-reviews-grid">
+                <article v-for="review in featuredReviews" :key="review.id" class="review-editorial-card">
+                    <div class="quote-symbol">“</div>
+                    <div class="review-stars-box">
                         <Star
-                            v-for="
-                                star in 5
-                            "
+                            v-for="star in 5"
                             :key="star"
-                            :size="14"
-                            :fill="
-                                star <=
-                                Number(
-                                    review.rating,
-                                )
-                                    ? 'currentColor'
-                                    : 'none'
-                            "
+                            :size="13"
+                            :fill="star <= Number(review.rating) ? 'currentColor' : 'none'"
+                            class="star-gold"
                         />
                     </div>
-
-                    <p>
-                        {{
-                            review.comment
-                        }}
-                    </p>
-
-                    <footer>
-                        <div class="review-card__avatar">
-                            {{
-                                review.user
-                                    ?.name
-                                    ?.charAt(0)
-                                    ?.toUpperCase() ??
-                                'U'
-                            }}
-                        </div>
-
-                        <div>
-                            <strong>
-                                {{
-                                    review.user
-                                        ?.name ??
-                                    'Khách hàng'
-                                }}
-                            </strong>
-
-                            <span>
-                                {{
-                                    formatReviewDate(
-                                        review
-                                            .created_at,
-                                    )
-                                }}
-                            </span>
-                        </div>
-                    </footer>
+                    <p class="review-quote-body">{{ review.comment }}</p>
+                    <div class="review-buyer-line">
+                        <strong class="buyer-name">{{ review.user?.name ?? 'Khách hàng' }}</strong>
+                        <span class="buyer-date">{{ formatReviewDate(review.created_at) }} • Đã mua hàng</span>
+                    </div>
                 </article>
             </div>
 
-            <div
-                v-else
-                class="review-empty"
-            >
-                <Star
-                    :size="30"
-                />
-
-                <strong>
-                    Chưa có đánh giá nổi bật
-                </strong>
-
-                <span>
-                    Đánh giá của người mua
-                    sẽ xuất hiện tại đây.
-                </span>
-            </div>
-        </section>
-
-        <!-- =====================
-             CTA
-        ====================== -->
-
-        <section class="bottom-cta">
-            <div class="bottom-cta__content">
-                <span>
-                    NEXACART
-                </span>
-
-                <h2>
-                    Bắt đầu trải nghiệm
-                    mua sắm tiện lợi hơn
-                    ngay hôm nay.
-                </h2>
-
-                <p>
-                    Khám phá sản phẩm từ nhiều
-                    nhà bán hàng, lưu wishlist
-                    và quản lý đơn hàng trong
-                    cùng một tài khoản.
-                </p>
-
-                <div class="bottom-cta__actions">
-                    <RouterLink
-                        :to="{
-                            name:
-                                'products',
-                        }"
-                        class="bottom-cta__primary"
-                    >
-                        Mua sắm ngay
-                    </RouterLink>
-
-                    <RouterLink
-                        :to="{
-                            name:
-                                'customer-profile',
-                        }"
-                        class="bottom-cta__secondary"
-                    >
-                        Tìm hiểu thêm
-                    </RouterLink>
-                </div>
-            </div>
-
-            <div class="bottom-cta__visual">
-                <ShoppingBag
-                    :size="82"
-                />
-
-                <Store
-                    :size="66"
-                />
-
-                <PackageCheck
-                    :size="76"
-                />
+            <div v-else class="empty-view">
+                <p>Chưa có đánh giá nào được hiển thị.</p>
             </div>
         </section>
     </main>
 </template>
 
 <style scoped>
-.home-page {
-    --green-950: #063c25;
-    --green-900: #07532f;
-    --green-800: #08703d;
-    --green-700: #0b8b49;
-    --green-600: #10a457;
-    --green-100: #e8f6ee;
-    --green-50: #f2faf5;
+/* ================= Base Styles (No black borders, Fresh Green Palette) ================= */
+.clean-ecom {
+    --brand-green: #15803d;         /* Xanh lá chủ đạo */
+    --brand-green-hover: #166534;   /* Xanh đậm khi hover */
+    --brand-green-soft: #f0fdf4;    /* Nền xanh nhạt */
+    --brand-green-border: #bbf7d0;  /* Viền xanh nhạt */
+    --color-text-main: #0f172a;     /* Màu chữ đậm thanh lịch (Slate 900) */
+    --color-text-sub: #475569;      /* Màu chữ phụ (Slate 600) */
+    --color-text-muted: #64748b;    /* Màu chữ mờ (Slate 500) */
+    --color-border: #e2e8f0;        /* Viền xám sáng tinh tế */
+    --color-bg-subtle: #f8fafc;     /* Nền xám nhạt */
+    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+    --shadow-hover: 0 10px 20px -3px rgba(21, 128, 61, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
 
-    display: grid;
-    gap: 62px;
-
-    width: min(
-        calc(100% - 40px),
-        1360px
-    );
-
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    width: min(calc(100% - 40px), 1280px);
     margin: 0 auto;
-    padding: 30px 0 74px;
-
-    color: #17221c;
-
-    font-family:
-        Roboto,
-        Arial,
-        sans-serif;
+    padding: 0 0 36px 0;
+    color: var(--color-text-main);
+    font-family: Roboto, Arial, sans-serif;
+    box-sizing: border-box;
 }
 
-/* ========================================
-   ALERT
-======================================== */
-
-.home-alert {
-    padding: 12px 15px;
-
-    border: 1px solid;
-
-    font-size: 12px;
-}
-
-.home-alert--error {
-    border-color: #dfb2b2;
-
-    color: #963838;
-    background: #fff3f3;
-}
-
-.home-alert--success {
-    border-color: #9fc8ad;
-
-    color: #216640;
-    background: #eff9f2;
-}
-
-/* ========================================
-   HERO
-======================================== */
-
-.hero {
-    display: grid;
-
-    grid-template-columns:
-        minmax(0, 0.94fr)
-        minmax(500px, 1.06fr);
-
-    min-height: 590px;
-
-    align-items: center;
-
-    gap: 30px;
-
-    padding:
-        30px 0
-        30px 20px;
-}
-
-.hero__content {
-    min-width: 0;
-
-    padding:
-        28px
-        18px
-        28px
-        4px;
-}
-
-.hero__badge {
-    display: inline-flex;
-
-    min-height: 31px;
-
-    align-items: center;
-
-    gap: 7px;
-
-    padding: 0 12px;
-
-    border-radius: 999px;
-
-    color:
-        var(--green-800);
-
-    background:
-        var(--green-100);
-
-    font-size: 9px;
-    font-weight: 800;
-
-    letter-spacing: 0.08em;
-}
-
-.hero h1 {
-    max-width: 670px;
-
-    margin: 25px 0 0;
-
-    color: #161b18;
-
-    font-size:
-        clamp(
-            48px,
-            5vw,
-            68px
-        );
-
-    font-weight: 800;
-
-    letter-spacing:
-        -0.045em;
-
-    line-height: 1.08;
-}
-
-.hero h1 span {
-    color:
-        var(--green-700);
-}
-
-.hero__description {
-    max-width: 590px;
-
-    margin: 21px 0 0;
-
-    color: #67736c;
-
-    font-size: 14px;
-
-    line-height: 1.75;
-}
-
-/* FEATURES */
-
-.hero__features {
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            3,
-            minmax(0, 1fr)
-        );
-
-    gap: 18px;
-
-    margin-top: 31px;
-}
-
-.hero__features article {
-    display: flex;
-
-    align-items: center;
-
-    gap: 10px;
-}
-
-.hero__features article > span {
-    display: grid;
-
-    width: 43px;
-    height: 43px;
-
-    flex: 0 0 auto;
-
-    place-items: center;
-
-    border-radius: 50%;
-
-    color:
-        var(--green-700);
-
-    background:
-        var(--green-50);
-}
-
-.hero__features strong,
-.hero__features small {
-    display: block;
-}
-
-.hero__features strong {
-    color: #26352c;
-
-    font-size: 10px;
-}
-
-.hero__features small {
-    margin-top: 4px;
-
-    color: #8d978f;
-
-    font-size: 8px;
-}
-
-/* ACTION */
-
-.hero__actions {
-    display: flex;
-
-    flex-wrap: wrap;
-
-    gap: 12px;
-
-    margin-top: 35px;
-}
-
-.button {
-    display: inline-flex;
-
-    min-height: 48px;
-
-    align-items: center;
-    justify-content: center;
-
-    gap: 8px;
-
-    padding: 0 22px;
-
-    border-radius: 7px;
-
-    font-size: 11px;
-    font-weight: 700;
-
-    text-decoration: none;
-
-    transition:
-        transform 160ms ease,
-        background-color 160ms ease;
-}
-
-.button:hover {
-    transform:
-        translateY(-1px);
-}
-
-.button--primary {
-    color: #ffffff;
-
-    background:
-        var(--green-700);
-}
-
-.button--primary:hover {
-    background:
-        var(--green-800);
-}
-
-.button--secondary {
-    border:
-        1px solid
-        #78c198;
-
-    color:
-        var(--green-700);
-
-    background: #ffffff;
-}
-
-/* ========================================
-   HERO VISUAL
-======================================== */
-
-.hero__visual {
-    position: relative;
-
-    min-height: 550px;
-}
-
-.hero-background {
-    position: absolute;
-
-    inset:
-        55px
-        24px
-        26px
-        78px;
-
-    border-radius:
-        80px
-        18px
-        80px
-        18px;
-
-    background:
-        linear-gradient(
-            145deg,
-            #e2f3e8,
-            #f5faf7
-        );
-}
-
-/* MAIN PRODUCT */
-
-.hero-main-product {
-    position: absolute;
-
-    top: 10px;
-    right: 86px;
-    bottom: 35px;
-    left: 50px;
-
+/* ================= 1. Marquee Ticker (Nền sáng Xanh Mint) ================= */
+.marquee-ribbon {
     overflow: hidden;
-
-    border-radius: 28px;
-
-    color: inherit;
-
-    background: #edf5f0;
-
-    box-shadow:
-        0 28px 70px
-        rgb(25 68 41 / 16%);
-
-    text-decoration: none;
-}
-
-.hero-main-product > img {
-    width: 100%;
-    height: 100%;
-
-    object-fit: cover;
-
-    transition:
-        transform 320ms ease;
-}
-
-.hero-main-product:hover > img {
-    transform:
-        scale(1.025);
-}
-
-.hero-image-placeholder {
-    display: grid;
-
-    width: 100%;
-    height: 100%;
-
-    place-items: center;
-
-    color: #9aada1;
-}
-
-.hero-main-product__label {
-    position: absolute;
-
-    top: 17px;
-    left: 17px;
-
-    padding: 7px 11px;
-
-    border-radius: 999px;
-
-    color:
-        var(--green-800);
-
-    background:
-        rgb(255 255 255 / 91%);
-
-    font-size: 9px;
-    font-weight: 700;
-}
-
-.hero-main-product__info {
-    position: absolute;
-
-    right: 20px;
-    bottom: 20px;
-    left: 20px;
-
-    display: grid;
-
-    gap: 5px;
-
-    padding: 17px;
-
-    border-radius: 13px;
-
-    background:
-        rgb(255 255 255 / 94%);
-
-    backdrop-filter:
-        blur(12px);
-}
-
-.hero-main-product__info span {
-    color:
-        var(--green-700);
-
-    font-size: 9px;
-    font-weight: 700;
-}
-
-.hero-main-product__info strong {
-    overflow: hidden;
-
-    color: #243229;
-
-    font-size: 13px;
-
-    text-overflow: ellipsis;
-
     white-space: nowrap;
+    background: var(--brand-green-soft);
+    color: var(--brand-green);
+    padding: 8px 0;
+    font-family: monospace;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--brand-green-border);
 }
 
-.hero-main-product__info b {
-    color:
-        var(--green-700);
-
-    font-size: 16px;
+.ticker-content {
+    display: inline-flex;
+    gap: 32px;
+    animation: ticker-loop 25s linear infinite;
 }
 
-/* SIDE PRODUCTS */
-
-.hero-side-products {
-    position: absolute;
-
-    right: 0;
-    bottom: 28px;
-
-    z-index: 4;
-
-    display: grid;
-
-    gap: 8px;
-
-    width: 215px;
+@keyframes ticker-loop {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
 }
 
-.hero-side-product {
-    display: grid;
-
-    grid-template-columns:
-        68px
-        minmax(0, 1fr);
-
-    gap: 9px;
-
+/* ================= Notice Boxes ================= */
+.notice-box {
+    display: flex;
     align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border: 1px solid;
+}
+.notice-error {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+.notice-success {
+    background: var(--brand-green-soft);
+    border-color: var(--brand-green-border);
+    color: var(--brand-green);
+}
 
-    padding: 7px;
+/* ================= 2. Hero Stage ================= */
+.hero-showcase-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(400px, 0.9fr);
+    gap: 32px;
+    align-items: stretch;
+    padding-top: 10px;
+}
 
-    border:
-        1px solid
-        #dce7e0;
+.hero-left-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 0;
+}
 
-    border-radius: 12px;
+.meta-tag-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 
-    color: inherit;
+.tag-badge {
+    background: var(--brand-green-soft);
+    color: var(--brand-green);
+    border: 1px solid var(--brand-green-border);
+    font-family: monospace;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    padding: 3px 8px;
+}
 
-    background: #ffffff;
+.tag-text {
+    font-family: monospace;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    letter-spacing: 0.05em;
+}
 
-    box-shadow:
-        0 10px 26px
-        rgb(30 66 42 / 10%);
+.hero-big-title {
+    font-size: clamp(2.25rem, 4.5vw, 3.75rem);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin: 0;
+    text-transform: uppercase;
+}
 
+.title-accent {
+    color: var(--color-text-main);
+}
+
+.title-emerald {
+    color: var(--brand-green);
+}
+
+.hero-intro {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--color-text-sub);
+    max-width: 480px;
+    margin: 0;
+}
+
+.hero-btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.btn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 22px;
+    font-size: 0.8125rem;
+    font-weight: 700;
     text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
 }
 
-.hero-side-product img,
-.hero-side-product__empty {
-    width: 68px;
-    height: 68px;
-
-    border-radius: 8px;
+.btn-green {
+    background: var(--brand-green);
+    color: #ffffff;
+    border-color: var(--brand-green);
+}
+.btn-green:hover {
+    background: var(--brand-green-hover);
 }
 
-.hero-side-product img {
+.btn-light {
+    background: #ffffff;
+    color: var(--color-text-main);
+    border-color: var(--color-border);
+}
+.btn-light:hover {
+    background: var(--color-bg-subtle);
+    border-color: #cbd5e1;
+}
+
+/* ================= 2.1 Hero Right Frame ================= */
+.hero-right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.featured-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-card);
+    text-decoration: none;
+    color: inherit;
+    overflow: hidden;
+    flex: 1;
+    transition: all 0.2s ease;
+}
+
+.featured-frame:hover {
+    border-color: var(--brand-green-border);
+    box-shadow: var(--shadow-hover);
+}
+
+.sticker-tag {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 2;
+    background: var(--brand-green);
+    color: #ffffff;
+    font-family: monospace;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    padding: 3px 8px;
+}
+
+.image-stage {
+    width: 100%;
+    height: 260px;
+    background: var(--color-bg-subtle);
+    overflow: hidden;
+}
+
+.image-stage img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.35s ease;
+}
+
+.featured-frame:hover .image-stage img {
+    transform: scale(1.04);
+}
+
+.stage-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: var(--color-text-muted);
+}
+
+.caption-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 14px 18px;
+    background: #ffffff;
+    border-top: 1px solid var(--color-border);
+}
+
+.caption-category {
+    font-family: monospace;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--brand-green);
+    text-transform: uppercase;
+}
+
+.caption-title {
+    margin: 2px 0 0 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.caption-price {
+    font-size: 1.1875rem;
+    font-weight: 800;
+    color: var(--brand-green);
+    font-feature-settings: "tnum";
+}
+
+/* Secondary Items Grid */
+.secondary-items-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.secondary-tile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.15s ease;
+}
+
+.secondary-tile:hover {
+    border-color: var(--brand-green);
+    background: var(--color-bg-subtle);
+}
+
+.tile-thumb {
+    width: 46px;
+    height: 46px;
+    background: var(--color-bg-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tile-thumb img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
 }
 
-.hero-side-product__empty {
-    display: grid;
-
-    place-items: center;
-
-    color: #97a69d;
-
-    background: #edf4ef;
-}
-
-.hero-side-product > div:last-child {
+.tile-info {
     min-width: 0;
 }
 
-.hero-side-product strong {
-    display: -webkit-box;
-
-    overflow: hidden;
-
-    color: #29372e;
-
-    font-size: 9px;
-
-    line-height: 1.4;
-
-    -webkit-box-orient:
-        vertical;
-
-    -webkit-line-clamp: 2;
-}
-
-.hero-side-product span {
-    display: block;
-
-    margin-top: 5px;
-
-    color:
-        var(--green-700);
-
-    font-size: 10px;
-    font-weight: 700;
-}
-
-/* DELIVERY */
-
-.delivery-card {
-    position: absolute;
-
-    top: 68px;
-    right: 5px;
-
-    z-index: 5;
-
-    display: grid;
-
-    grid-template-columns:
-        auto
-        minmax(0, 1fr);
-
-    gap: 10px;
-
-    width: 184px;
-
-    padding: 15px;
-
-    border-radius: 13px;
-
-    background: #ffffff;
-
-    box-shadow:
-        0 14px 34px
-        rgb(25 66 41 / 13%);
-}
-
-.delivery-card__icon {
-    display: grid;
-
-    width: 38px;
-    height: 38px;
-
-    place-items: center;
-
-    border-radius: 8px;
-
-    color:
-        var(--green-700);
-
-    background:
-        var(--green-100);
-}
-
-.delivery-card strong,
-.delivery-card span {
-    display: block;
-}
-
-.delivery-card strong {
-    color: #26352c;
-
-    font-size: 10px;
-
-    line-height: 1.4;
-}
-
-.delivery-card span {
-    margin-top: 4px;
-
-    color: #87928a;
-
-    font-size: 8px;
-
-    line-height: 1.45;
-}
-
-/* ========================================
-   CENTER HEADING
-======================================== */
-
-.center-heading {
-    text-align: center;
-}
-
-.center-heading h2 {
+.tile-title {
     margin: 0;
-
-    color: #202923;
-
-    font-size: 20px;
-
-    font-weight: 700;
-}
-
-.center-heading > p {
-    margin: 8px 0 0;
-
-    color: #818b84;
-
-    font-size: 11px;
-}
-
-.center-heading > span {
-    display: block;
-
-    width: 38px;
-    height: 2px;
-
-    margin: 12px auto 0;
-
-    background:
-        var(--green-700);
-}
-
-/* ========================================
-   BENEFITS
-======================================== */
-
-.benefit-section {
-    padding:
-        30px
-        36px
-        33px;
-
-    border-radius: 18px;
-
-    background:
-        linear-gradient(
-            90deg,
-            #f6fbf8,
-            #edf8f1,
-            #f7fbf8
-        );
-}
-
-.benefit-grid {
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            4,
-            minmax(0, 1fr)
-        );
-
-    gap: 24px;
-
-    margin-top: 30px;
-}
-
-.benefit-grid article {
-    display: grid;
-
-    grid-template-columns:
-        auto
-        minmax(0, 1fr);
-
-    gap: 12px;
-}
-
-.benefit-grid__icon {
-    display: grid;
-
-    width: 42px;
-    height: 42px;
-
-    place-items: center;
-
-    border-radius: 50%;
-
-    color:
-        var(--green-700);
-
-    background: #e4f5eb;
-}
-
-.benefit-grid strong {
-    color: #29372e;
-
-    font-size: 10px;
-}
-
-.benefit-grid p {
-    margin: 7px 0 0;
-
-    color: #7f8a82;
-
-    font-size: 9px;
-
-    line-height: 1.55;
-}
-
-/* ========================================
-   CATEGORY
-======================================== */
-
-.category-section {
-    display: grid;
-
-    gap: 29px;
-}
-
-.category-showcase {
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            4,
-            minmax(0, 1fr)
-        );
-
-    gap: 16px;
-}
-
-.business-card {
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
     overflow: hidden;
-
-    border:
-        1px solid
-        #e0e8e3;
-
-    border-radius: 11px;
-
-    color: inherit;
-
-    background: #ffffff;
-
-    box-shadow:
-        0 8px 24px
-        rgb(41 70 51 / 6%);
-
-    text-decoration: none;
-
-    transition:
-        transform 180ms ease,
-        box-shadow 180ms ease;
+    text-overflow: ellipsis;
 }
 
-.business-card:hover {
-    transform:
-        translateY(-4px);
-
-    box-shadow:
-        0 16px 36px
-        rgb(34 72 47 / 10%);
-}
-
-.business-card__visual {
-    display: grid;
-
-    height: 178px;
-
-    place-items: center;
-
-    color: #79aa8d;
-
-    background:
-        linear-gradient(
-            135deg,
-            #dcefe3,
-            #f1f8f4
-        );
-}
-
-.business-card__content {
-    position: relative;
-
-    min-height: 105px;
-
-    padding:
-        19px
-        16px
-        16px;
-}
-
-.business-card__icon {
-    position: absolute;
-
-    top: -20px;
-    left: 16px;
-
-    display: grid;
-
-    width: 38px;
-    height: 38px;
-
-    place-items: center;
-
-    border:
-        1px solid
-        #dce7e0;
-
-    border-radius: 8px;
-
-    color:
-        var(--green-700);
-
-    background: #ffffff;
-}
-
-.business-card strong {
+.tile-price {
     display: block;
-
-    margin-top: 7px;
-
-    color: #26352c;
-
-    font-size: 11px;
-}
-
-.business-card p {
-    margin: 7px 0 0;
-
-    color: #7e8982;
-
-    font-size: 9px;
-
-    line-height: 1.55;
-}
-
-/* ========================================
-   SECTION HEADING
-======================================== */
-
-.product-section {
-    display: grid;
-
-    gap: 23px;
-}
-
-.section-heading {
-    display: flex;
-
-    align-items: flex-end;
-    justify-content:
-        space-between;
-
-    gap: 20px;
-}
-
-.section-heading span {
-    color:
-        var(--green-700);
-
-    font-size: 9px;
-    font-weight: 800;
-
-    letter-spacing: 0.12em;
-}
-
-.section-heading h2 {
-    margin: 6px 0 0;
-
-    color: #222d26;
-
-    font-size: 24px;
-
-    letter-spacing:
-        -0.02em;
-}
-
-.section-heading a {
-    display: inline-flex;
-
-    align-items: center;
-
-    gap: 6px;
-
-    color:
-        var(--green-700);
-
-    font-size: 10px;
+    margin-top: 2px;
+    font-size: 0.8125rem;
     font-weight: 700;
-
-    text-decoration: none;
+    color: var(--brand-green);
 }
 
-/* ========================================
-   PRODUCT
-======================================== */
-
-.product-grid,
-.product-loading {
+/* ================= 3. Commitments Row (01 – 04) ================= */
+.commitments-row {
     display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--brand-green);
+    background: #ffffff;
+}
 
-    grid-template-columns:
-        repeat(
-            4,
-            minmax(0, 1fr)
-        );
+.commitment-card {
+    display: flex;
+    gap: 12px;
+    padding: 18px 20px;
+    border-right: 1px solid var(--color-border);
+}
+.commitment-card:last-child {
+    border-right: none;
+}
 
+.card-num {
+    font-family: monospace;
+    font-size: 1.0625rem;
+    font-weight: 800;
+    color: var(--brand-green);
+}
+
+.card-heading {
+    margin: 0 0 3px 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+}
+
+.card-desc {
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+}
+
+/* ================= 4. Section Container & Headers ================= */
+.section-container {
+    display: flex;
+    flex-direction: column;
     gap: 16px;
 }
 
-.product-skeleton {
-    padding: 10px;
-
-    border:
-        1px solid
-        #e0e7e2;
-
-    border-radius: 10px;
-
-    background: #ffffff;
-}
-
-.product-skeleton__image {
-    height: 245px;
-
-    border-radius: 8px;
-
-    background: #edf3ef;
-
-    animation:
-        skeleton-pulse
-        1.3s
-        ease-in-out
-        infinite;
-}
-
-.product-skeleton__line {
-    width: 88%;
-    height: 11px;
-
-    margin-top: 15px;
-
-    background: #edf1ee;
-}
-
-.product-skeleton__line--short {
-    width: 56%;
-}
-
-@keyframes skeleton-pulse {
-    50% {
-        opacity: 0.55;
-    }
-}
-
-.product-empty {
-    display: grid;
-
-    min-height: 240px;
-
-    place-items: center;
-    align-content: center;
-
-    gap: 8px;
-
-    border:
-        1px solid
-        #e0e7e2;
-
-    color: #87938b;
-
-    background: #ffffff;
-}
-
-.product-empty strong {
-    color: #39483f;
-
-    font-size: 12px;
-}
-
-/* ========================================
-   STATS
-======================================== */
-
-.stats-section {
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            4,
-            minmax(0, 1fr)
-        );
-
-    padding:
-        0
-        52px;
-
-    background:
-        linear-gradient(
-            90deg,
-            #034c2c,
-            #07683a
-        );
-}
-
-.stats-section article {
-    display: grid;
-
-    grid-template-columns:
-        auto
-        minmax(0, 1fr);
-
-    align-items: center;
-
-    gap: 12px;
-
-    padding:
-        29px
-        24px;
-
-    color: #ffffff;
-}
-
-.stats-section article > svg {
-    color: #aee0bf;
-}
-
-.stats-section strong,
-.stats-section span {
-    display: block;
-}
-
-.stats-section strong {
-    font-size: 23px;
-}
-
-.stats-section span {
-    margin-top: 4px;
-
-    color:
-        rgb(255 255 255 / 74%);
-
-    font-size: 9px;
-}
-
-/* ========================================
-   REVIEWS
-======================================== */
-
-.review-section {
-    display: grid;
-
-    gap: 29px;
-}
-
-.review-grid {
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            3,
-            minmax(0, 1fr)
-        );
-
-    gap: 18px;
-}
-
-.review-card {
-    position: relative;
-
-    min-height: 220px;
-
-    padding: 24px;
-
-    border:
-        1px solid
-        #e3e8e5;
-
-    border-radius: 12px;
-
-    background: #ffffff;
-
-    box-shadow:
-        0 12px 30px
-        rgb(45 73 55 / 7%);
-}
-
-.review-card__quote {
-    color:
-        var(--green-700);
-
-    font-family:
-        Georgia,
-        serif;
-
-    font-size: 40px;
-
-    line-height: 1;
-}
-
-.review-card__stars {
+.section-top-bar {
     display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 10px;
+}
 
+.top-bar-title {
+    display: flex;
+    flex-direction: column;
     gap: 2px;
-
-    margin-top: 5px;
-
-    color: #dda020;
 }
 
-.review-card > p {
-    min-height: 72px;
-
-    margin:
-        13px
-        0
-        18px;
-
-    color: #5d6961;
-
-    font-size: 11px;
-
-    line-height: 1.7;
-}
-
-.review-card footer {
-    display: flex;
-
-    align-items: center;
-
-    gap: 10px;
-}
-
-.review-card__avatar {
-    display: grid;
-
-    width: 38px;
-    height: 38px;
-
-    flex: 0 0 auto;
-
-    place-items: center;
-
-    border-radius: 50%;
-
-    color: #ffffff;
-
-    background:
-        var(--green-700);
-
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.review-card footer strong,
-.review-card footer span {
-    display: block;
-}
-
-.review-card footer strong {
-    color: #28372e;
-
-    font-size: 10px;
-}
-
-.review-card footer span {
-    margin-top: 3px;
-
-    color: #8a948d;
-
-    font-size: 8px;
-}
-
-.review-empty {
-    display: grid;
-
-    min-height: 200px;
-
-    place-items: center;
-    align-content: center;
-
-    gap: 7px;
-
-    border:
-        1px solid
-        #e0e7e2;
-
-    color: #829087;
-}
-
-.review-empty strong {
-    color: #45544a;
-
-    font-size: 11px;
-}
-
-.review-empty span {
-    font-size: 9px;
-}
-
-/* ========================================
-   CTA
-======================================== */
-
-.bottom-cta {
-    display: grid;
-
-    grid-template-columns:
-        minmax(0, 1fr)
-        420px;
-
-    min-height: 250px;
-
-    overflow: hidden;
-
-    border-radius: 16px;
-
-    color: #ffffff;
-
-    background:
-        linear-gradient(
-            115deg,
-            #098f4d,
-            #06723f
-        );
-}
-
-.bottom-cta__content {
-    padding:
-        37px
-        46px;
-}
-
-.bottom-cta__content > span {
-    color: #b8e6c7;
-
-    font-size: 9px;
+.label-pill {
+    font-family: monospace;
+    font-size: 0.6875rem;
     font-weight: 800;
-
-    letter-spacing: 0.14em;
+    color: var(--brand-green);
+    letter-spacing: 0.06em;
 }
 
-.bottom-cta h2 {
-    max-width: 620px;
-
-    margin: 10px 0 0;
-
-    font-size: 30px;
-
-    line-height: 1.2;
+.section-top-bar h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
 }
 
-.bottom-cta p {
-    max-width: 600px;
-
-    margin: 12px 0 0;
-
-    color:
-        rgb(255 255 255 / 76%);
-
-    font-size: 11px;
-
-    line-height: 1.6;
-}
-
-.bottom-cta__actions {
-    display: flex;
-
-    gap: 10px;
-
-    margin-top: 22px;
-}
-
-.bottom-cta__primary,
-.bottom-cta__secondary {
+.see-all-link {
     display: inline-flex;
-
-    min-height: 40px;
-
     align-items: center;
-    justify-content: center;
-
-    padding:
-        0
-        16px;
-
-    border-radius: 6px;
-
-    font-size: 10px;
+    gap: 4px;
+    font-size: 0.8125rem;
     font-weight: 700;
-
+    color: var(--brand-green);
     text-decoration: none;
 }
+.see-all-link:hover {
+    text-decoration: underline;
+}
 
-.bottom-cta__primary {
-    color:
-        var(--green-800);
+/* Category Index Grid (01 - 04) */
+.category-index-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+}
 
+.index-card {
+    position: relative;
     background: #ffffff;
-}
-
-.bottom-cta__secondary {
-    border:
-        1px solid
-        rgb(255 255 255 / 55%);
-
-    color: #ffffff;
-}
-
-.bottom-cta__visual {
+    border: 1px solid var(--color-border);
+    padding: 20px 18px;
     display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 130px;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: var(--shadow-card);
+    transition: all 0.2s ease;
+}
 
-    align-items: flex-end;
+.index-card:hover {
+    border-color: var(--brand-green-border);
+    background: var(--brand-green-soft);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+}
+
+.index-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.index-number {
+    font-family: monospace;
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: var(--brand-green);
+}
+
+.index-arrow {
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.index-card:hover .index-arrow {
+    color: var(--brand-green);
+    transform: translateX(3px);
+}
+
+.index-title {
+    margin: 0 0 3px 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+}
+
+.index-link {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--brand-green);
+}
+
+.card-hover-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--brand-green);
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+}
+
+.index-card:hover .card-hover-indicator {
+    transform: scaleX(1);
+}
+
+/* ================= 5. Products Grid ================= */
+.products-grid-view {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+}
+
+.product-skeleton-card {
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    padding: 10px;
+}
+.skeleton-image {
+    width: 100%;
+    height: 180px;
+    background: #f1f5f9;
+}
+.skeleton-line {
+    height: 10px;
+    background: #f1f5f9;
+    margin-top: 10px;
+}
+.skeleton-line.full { width: 90%; }
+.skeleton-line.short { width: 45%; }
+
+.empty-view {
+    padding: 48px 20px;
+    text-align: center;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+}
+
+/* ================= 6. Big Metrics Strip ================= */
+.metrics-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--color-border);
+    background: #ffffff;
+    padding: 20px 0;
+    box-shadow: var(--shadow-card);
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
-
-    gap: 18px;
-
-    padding-bottom: 42px;
-
-    color: #d7f0df;
-
-    background:
-        radial-gradient(
-            circle
-            at 50% 80%,
-            rgb(255 255 255 / 17%),
-            transparent 62%
-        );
+    border-right: 1px solid var(--color-border);
+    padding: 0 16px;
+}
+.metric-item:last-child {
+    border-right: none;
 }
 
-/* ========================================
-   RESPONSIVE
-======================================== */
+.metric-val {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--color-text-main);
+    letter-spacing: -0.02em;
+    font-feature-settings: "tnum";
+}
 
+.metric-val.green-text {
+    color: var(--brand-green);
+}
+
+.metric-lbl {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+/* ================= 7. Editorial Reviews Grid ================= */
+.editorial-reviews-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+}
+
+.review-editorial-card {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--brand-green);
+    padding: 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: var(--shadow-card);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.review-editorial-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+}
+
+.quote-symbol {
+    font-family: Georgia, serif;
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--brand-green);
+    margin-bottom: -6px;
+}
+
+.review-stars-box {
+    display: flex;
+    gap: 2px;
+    color: #eab308;
+}
+
+.review-quote-body {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--color-text-sub);
+    flex: 1;
+}
+
+.review-buyer-line {
+    display: flex;
+    flex-direction: column;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
+}
+
+.buyer-name {
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.buyer-date {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+}
+
+/* ================= 8. Responsive Breakpoints ================= */
 @media (max-width: 1100px) {
-    .hero {
-        grid-template-columns:
-            1fr;
+    .hero-showcase-stage {
+        grid-template-columns: 1fr;
     }
-
-    .hero__visual {
-        min-height: 510px;
+    .commitments-row,
+    .category-index-grid,
+    .metrics-strip {
+        grid-template-columns: repeat(2, 1fr);
     }
-
-    .benefit-grid,
-    .category-showcase,
-    .stats-section {
-        grid-template-columns:
-            repeat(
-                2,
-                minmax(0, 1fr)
-            );
+    .commitment-card:nth-child(2),
+    .metric-item:nth-child(2) {
+        border-right: none;
     }
-
-    .product-grid,
-    .product-loading {
-        grid-template-columns:
-            repeat(
-                3,
-                minmax(0, 1fr)
-            );
+    .commitment-card,
+    .metric-item {
+        border-bottom: 1px solid var(--color-border);
     }
-
-    .bottom-cta {
-        grid-template-columns:
-            1fr;
-    }
-
-    .bottom-cta__visual {
-        min-height: 180px;
+    .products-grid-view {
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 
-@media (max-width: 820px) {
-    .product-grid,
-    .product-loading {
-        grid-template-columns:
-            repeat(
-                2,
-                minmax(0, 1fr)
-            );
-    }
-
-    .review-grid {
-        grid-template-columns:
-            1fr;
+@media (max-width: 768px) {
+    .products-grid-view,
+    .editorial-reviews-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
-@media (max-width: 650px) {
-    .home-page {
-        width:
-            calc(100% - 28px);
-
-        gap: 48px;
+@media (max-width: 640px) {
+    .clean-ecom {
+        width: calc(100% - 24px);
+        gap: 28px;
     }
-
-    .hero {
-        padding: 10px 0;
+    .hero-big-title {
+        font-size: 2rem;
     }
-
-    .hero h1 {
-        font-size: 42px;
+    .commitments-row,
+    .category-index-grid,
+    .products-grid-view,
+    .metrics-strip,
+    .editorial-reviews-grid {
+        grid-template-columns: 1fr;
     }
-
-    .hero__features {
-        grid-template-columns:
-            1fr;
+    .metric-item,
+    .commitment-card {
+        border-right: none;
     }
-
-    .hero__actions {
+    .hero-btn-row {
+        flex-direction: column;
+    }
+    .btn-action {
         width: 100%;
-
-        flex-direction:
-            column;
     }
-
-    .button {
-        width: 100%;
-
-        box-sizing:
-            border-box;
-    }
-
-    .hero__visual {
-        min-height: 410px;
-    }
-
-    .hero-main-product {
-        inset:
-            10px
-            24px
-            20px;
-    }
-
-    .hero-side-products,
-    .delivery-card {
-        display: none;
-    }
-
-    .benefit-section {
-        padding:
-            26px
-            20px;
-    }
-
-    .benefit-grid,
-    .category-showcase,
-    .product-grid,
-    .product-loading,
-    .stats-section {
-        grid-template-columns:
-            1fr;
-    }
-
-    .section-heading {
-        align-items:
-            flex-start;
-
-        flex-direction:
-            column;
-    }
-
-    .stats-section {
-        padding: 0;
-    }
-
-    .bottom-cta__content {
-        padding:
-            30px
-            22px;
-    }
-
-    .bottom-cta h2 {
-        font-size: 25px;
-    }
-
-    .bottom-cta__actions {
-        flex-direction:
-            column;
-    }
-
-    .bottom-cta__primary,
-    .bottom-cta__secondary {
-        width: 100%;
-
-        box-sizing:
-            border-box;
+    .secondary-items-grid {
+        grid-template-columns: 1fr;
     }
 }
 </style>
