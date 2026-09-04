@@ -1,6 +1,7 @@
 <script setup>
 import {
     Building2,
+    CircleDollarSign,
     Mail,
     Pencil,
     Phone,
@@ -18,10 +19,16 @@ import {
 
 import {
     getSellerShopProfile,
+    getSellerSystemFee,
     updateSellerShopProfile,
 } from '@/api/seller/shop'
-
 const shop = ref(null)
+const systemFee = ref({
+    current_fee: 0,
+    total_fee: 0,
+    fee_rate: 5,
+    min_order_total: 300000,
+})
 
 const isLoading = ref(false)
 const isSubmitting = ref(false)
@@ -60,14 +67,30 @@ const hasChanges = computed(() => {
 
     return (
         form.name.trim() !==
-            (shop.value.name ?? '') ||
+        (shop.value.name ?? '') ||
         form.phone.trim() !==
-            (shop.value.phone ?? '') ||
+        (shop.value.phone ?? '') ||
         form.description.trim() !==
-            (shop.value.description ?? '')
+        (shop.value.description ?? '')
     )
 })
+async function fetchSystemFee() {
+    try {
+        const response = await getSellerSystemFee()
 
+        systemFee.value = response.data?.data ?? {
+            current_fee: 0,
+            total_fee: 0,
+            fee_rate: 5,
+            min_order_total: 300000,
+        }
+    } catch (error) {
+        console.error(
+            'Không thể tải phí hệ thống:',
+            error
+        )
+    }
+}
 async function fetchShopProfile() {
     isLoading.value = true
 
@@ -132,7 +155,7 @@ function cancelEdit() {
 function clearFieldError(field) {
     if (
         validationErrors.value[
-            field
+        field
         ]
     ) {
         delete validationErrors
@@ -244,9 +267,26 @@ function formatDate(value) {
         },
     ).format(date)
 }
+function formatCurrency(value) {
+    return new Intl.NumberFormat('vi-VN', {
+        style: 'currency',
+        currency: 'VND',
+    }).format(Number(value ?? 0))
+}
 
+function paySystemFee() {
+    if (Number(systemFee.value.current_fee) <= 0) {
+        return
+    }
+
+    console.log(
+        'Nộp phí:',
+        systemFee.value.current_fee
+    )
+}
 onMounted(() => {
     fetchShopProfile()
+    fetchSystemFee()
 })
 </script>
 
@@ -268,47 +308,31 @@ onMounted(() => {
                 </p>
             </div>
 
-            <button
-                v-if="
-                    shop &&
-                    !isEditing
-                "
-                type="button"
-                class="edit-button"
-                @click="
-                    startEdit
-                "
-            >
+            <button v-if="
+                shop &&
+                !isEditing
+            " type="button" class="edit-button" @click="
+                startEdit
+            ">
                 <Pencil :size="16" />
 
                 Chỉnh sửa
             </button>
         </header>
 
-        <div
-            v-if="errorMessage"
-            class="alert alert-error"
-        >
+        <div v-if="errorMessage" class="alert alert-error">
             {{ errorMessage }}
         </div>
 
-        <div
-            v-if="successMessage"
-            class="alert alert-success"
-        >
+        <div v-if="successMessage" class="alert alert-success">
             {{ successMessage }}
         </div>
 
-        <div
-            v-if="isLoading"
-            class="loading-state"
-        >
+        <div v-if="isLoading" class="loading-state">
             Đang tải hồ sơ cửa hàng...
         </div>
 
-        <template
-            v-else-if="shop"
-        >
+        <template v-else-if="shop">
             <!-- SHOP IDENTITY -->
             <section class="shop-identity-card">
                 <div class="shop-avatar">
@@ -321,18 +345,15 @@ onMounted(() => {
                             {{ shop.name }}
                         </h2>
 
-                        <span
-                            class="status-badge"
-                            :class="{
-                                active:
-                                    shop.status ===
-                                    'active',
+                        <span class="status-badge" :class="{
+                            active:
+                                shop.status ===
+                                'active',
 
-                                suspended:
-                                    shop.status ===
-                                    'suspended',
-                            }"
-                        >
+                            suspended:
+                                shop.status ===
+                                'suspended',
+                        }">
                             {{
                                 getStatusLabel(
                                     shop.status,
@@ -358,11 +379,9 @@ onMounted(() => {
                             }}
                         </span>
 
-                        <span
-                            v-if="
-                                shop.phone
-                            "
-                        >
+                        <span v-if="
+                            shop.phone
+                        ">
                             <Phone :size="14" />
 
                             {{
@@ -373,6 +392,95 @@ onMounted(() => {
                 </div>
             </section>
 
+            <section class="system-fee-card">
+                <header class="fee-header">
+                    <div>
+                        <p class="fee-eyebrow">
+                            PHÍ HỆ THỐNG
+                        </p>
+
+                        <h2>
+                            Phí nền tảng
+                        </h2>
+
+                        <p>
+                            Phí dịch vụ phát sinh từ các đơn hàng
+                            đủ điều kiện của cửa hàng.
+                        </p>
+                    </div>
+
+                    <button type="button" class="pay-fee-button" :disabled="Number(systemFee.current_fee) <= 0
+                        " @click="paySystemFee">
+                        <CircleDollarSign :size="16" />
+
+                        Nộp phí
+                    </button>
+                </header>
+
+                <div class="fee-content">
+                    <div class="fee-stat">
+                        <span>
+                            Phí tháng này
+                        </span>
+
+                        <strong>
+                            {{
+                                formatCurrency(
+                                    systemFee.current_fee
+                                )
+                            }}
+                        </strong>
+
+                        <small>
+                            Khoản phí phát sinh trong tháng hiện tại
+                        </small>
+                    </div>
+
+                    <div class="fee-stat">
+                        <span>
+                            Tổng phí đã phát sinh
+                        </span>
+
+                        <strong>
+                            {{
+                                formatCurrency(
+                                    systemFee.total_fee
+                                )
+                            }}
+                        </strong>
+
+                        <small>
+                            Tổng phí từ các đơn đủ điều kiện
+                        </small>
+                    </div>
+
+                    <div class="fee-policy">
+                        <div>
+                            <span>
+                                Mức phí
+                            </span>
+
+                            <strong>
+                                {{ systemFee.fee_rate }}%
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>
+                                Áp dụng cho đơn từ
+                            </span>
+
+                            <strong>
+                                {{
+                                    formatCurrency(
+                                        systemFee.min_order_total
+                                    )
+                                }}
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            </section>
             <div class="profile-layout">
                 <!-- EDITABLE INFORMATION -->
                 <section class="profile-card">
@@ -390,58 +498,38 @@ onMounted(() => {
                         </div>
                     </header>
 
-                    <form
-                        class="profile-form"
-                        @submit.prevent="
-                            submitProfile
-                        "
-                    >
+                    <form class="profile-form" @submit.prevent="
+                        submitProfile
+                    ">
                         <!-- SHOP NAME -->
                         <div class="form-group">
                             <label for="shop-name">
                                 Tên cửa hàng
                             </label>
 
-                            <div
-                                class="input-wrapper"
-                                :class="{
-                                    disabled:
-                                        !isEditing,
+                            <div class="input-wrapper" :class="{
+                                disabled:
+                                    !isEditing,
 
-                                    error:
-                                        validationErrors
-                                            .name?.length,
-                                }"
-                            >
-                                <Store
-                                    :size="17"
-                                />
+                                error:
+                                    validationErrors
+                                        .name?.length,
+                            }">
+                                <Store :size="17" />
 
-                                <input
-                                    id="shop-name"
-                                    v-model="
-                                        form.name
-                                    "
-                                    type="text"
-                                    :disabled="
-                                        !isEditing
-                                    "
-                                    placeholder="Tên cửa hàng"
-                                    @input="
-                                        clearFieldError(
-                                            'name',
-                                        )
-                                    "
-                                >
+                                <input id="shop-name" v-model="form.name
+                                    " type="text" :disabled="!isEditing
+                                        " placeholder="Tên cửa hàng" @input="
+                                            clearFieldError(
+                                                'name',
+                                            )
+                                            ">
                             </div>
 
-                            <small
-                                v-if="
-                                    validationErrors
-                                        .name?.[0]
-                                "
-                                class="field-error"
-                            >
+                            <small v-if="
+                                validationErrors
+                                    .name?.[0]
+                            " class="field-error">
                                 {{
                                     validationErrors
                                         .name[0]
@@ -455,20 +543,11 @@ onMounted(() => {
                                 Email liên hệ
                             </label>
 
-                            <div
-                                class="input-wrapper disabled"
-                            >
-                                <Mail
-                                    :size="17"
-                                />
+                            <div class="input-wrapper disabled">
+                                <Mail :size="17" />
 
-                                <input
-                                    v-model="
-                                        form.email
-                                    "
-                                    type="email"
-                                    disabled
-                                >
+                                <input v-model="form.email
+                                    " type="email" disabled>
                             </div>
 
                             <span class="field-note">
@@ -484,46 +563,29 @@ onMounted(() => {
                                 Số điện thoại
                             </label>
 
-                            <div
-                                class="input-wrapper"
-                                :class="{
-                                    disabled:
-                                        !isEditing,
+                            <div class="input-wrapper" :class="{
+                                disabled:
+                                    !isEditing,
 
-                                    error:
-                                        validationErrors
-                                            .phone?.length,
-                                }"
-                            >
-                                <Phone
-                                    :size="17"
-                                />
+                                error:
+                                    validationErrors
+                                        .phone?.length,
+                            }">
+                                <Phone :size="17" />
 
-                                <input
-                                    id="shop-phone"
-                                    v-model="
-                                        form.phone
-                                    "
-                                    type="tel"
-                                    :disabled="
-                                        !isEditing
-                                    "
-                                    placeholder="Số điện thoại cửa hàng"
-                                    @input="
-                                        clearFieldError(
-                                            'phone',
-                                        )
-                                    "
-                                >
+                                <input id="shop-phone" v-model="form.phone
+                                    " type="tel" :disabled="!isEditing
+                                        " placeholder="Số điện thoại cửa hàng" @input="
+                                            clearFieldError(
+                                                'phone',
+                                            )
+                                            ">
                             </div>
 
-                            <small
-                                v-if="
-                                    validationErrors
-                                        .phone?.[0]
-                                "
-                                class="field-error"
-                            >
+                            <small v-if="
+                                validationErrors
+                                    .phone?.[0]
+                            " class="field-error">
                                 {{
                                     validationErrors
                                         .phone[0]
@@ -533,39 +595,23 @@ onMounted(() => {
 
                         <!-- DESCRIPTION -->
                         <div class="form-group">
-                            <label
-                                for="shop-description"
-                            >
+                            <label for="shop-description">
                                 Giới thiệu cửa hàng
                             </label>
 
-                            <textarea
-                                id="shop-description"
-                                v-model="
-                                    form.description
-                                "
-                                :disabled="
-                                    !isEditing
-                                "
-                                maxlength="1000"
-                                placeholder="Giới thiệu ngắn về cửa hàng..."
-                                @input="
-                                    clearFieldError(
-                                        'description',
-                                    )
-                                "
-                            />
+                            <textarea id="shop-description" v-model="form.description
+                                " :disabled="!isEditing
+                                    " maxlength="1000" placeholder="Giới thiệu ngắn về cửa hàng..." @input="
+                                        clearFieldError(
+                                            'description',
+                                        )
+                                        " />
 
-                            <div
-                                class="description-footer"
-                            >
-                                <small
-                                    v-if="
-                                        validationErrors
-                                            .description?.[0]
-                                    "
-                                    class="field-error"
-                                >
+                            <div class="description-footer">
+                                <small v-if="
+                                    validationErrors
+                                        .description?.[0]
+                                " class="field-error">
                                     {{
                                         validationErrors
                                             .description[0]
@@ -582,33 +628,19 @@ onMounted(() => {
                         </div>
 
                         <!-- ACTION -->
-                        <footer
-                            v-if="isEditing"
-                            class="form-actions"
-                        >
-                            <button
-                                type="button"
-                                class="cancel-button"
-                                :disabled="
-                                    isSubmitting
-                                "
-                                @click="
+                        <footer v-if="isEditing" class="form-actions">
+                            <button type="button" class="cancel-button" :disabled="isSubmitting
+                                " @click="
                                     cancelEdit
-                                "
-                            >
+                                ">
                                 <X :size="16" />
 
                                 Hủy
                             </button>
 
-                            <button
-                                type="submit"
-                                class="save-button"
-                                :disabled="
-                                    isSubmitting ||
-                                    !hasChanges
-                                "
-                            >
+                            <button type="submit" class="save-button" :disabled="isSubmitting ||
+                                !hasChanges
+                                ">
                                 <Save :size="16" />
 
                                 {{
@@ -693,9 +725,7 @@ onMounted(() => {
                     </dl>
 
                     <div class="system-note">
-                        <Building2
-                            :size="18"
-                        />
+                        <Building2 :size="18" />
 
                         <p>
                             Một số thông tin như trạng
@@ -830,7 +860,7 @@ onMounted(() => {
     border-color: #deb0b0;
 }
 
-.shop-identity-content > p {
+.shop-identity-content>p {
     max-width: 750px;
     margin: 8px 0 0;
     color: #6f7d74;
@@ -862,8 +892,7 @@ onMounted(() => {
 .profile-layout {
     display: grid;
     grid-template-columns:
-        minmax(0, 1fr)
-        300px;
+        minmax(0, 1fr) 300px;
     gap: 18px;
     align-items: start;
 }
@@ -1057,7 +1086,7 @@ button:disabled {
     margin: 0;
 }
 
-.system-information > div {
+.system-information>div {
     padding: 13px 18px;
     border-bottom: 1px solid #edf1ee;
 }
@@ -1161,6 +1190,289 @@ button:disabled {
     }
 
     .form-actions button {
+        width: 100%;
+    }
+}
+/* SYSTEM FEE */
+
+.system-fee-card {
+    background: #ffffff;
+    border: 1px solid #dce5df;
+}
+
+.fee-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 20px;
+    border-bottom: 1px solid #e6ece8;
+}
+
+.fee-eyebrow {
+    margin: 0 0 5px;
+    color: #24734a;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.fee-header h2 {
+    margin: 0;
+    color: #253129;
+    font-size: 15px;
+}
+
+.fee-header > div > p:last-child {
+    margin: 5px 0 0;
+    color: #7a877f;
+    font-size: 10px;
+}
+
+.pay-fee-button {
+    display: inline-flex;
+    min-height: 39px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 15px;
+    color: #ffffff;
+    background: #24734a;
+    border: 1px solid #24734a;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.pay-fee-button:hover:not(:disabled) {
+    background: #1e633f;
+}
+
+.pay-fee-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.fee-content {
+    display: grid;
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr))
+        minmax(240px, 0.8fr);
+}
+
+.fee-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px;
+    border-right: 1px solid #e6ece8;
+}
+
+.fee-stat > span {
+    color: #748178;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.fee-stat > strong {
+    color: #24734a;
+    font-size: 21px;
+    font-weight: 700;
+}
+
+.fee-stat > small {
+    color: #89958d;
+    font-size: 9px;
+}
+
+.fee-policy {
+    padding: 13px 20px;
+    background: #f7faf8;
+}
+
+.fee-policy > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 43px;
+    border-bottom: 1px solid #e2e9e4;
+}
+
+.fee-policy > div:last-child {
+    border-bottom: 0;
+}
+
+.fee-policy span {
+    color: #748178;
+    font-size: 10px;
+}
+
+.fee-policy strong {
+    color: #354239;
+    font-size: 11px;
+}
+
+@media (max-width: 800px) {
+    .fee-content {
+        grid-template-columns: 1fr;
+    }
+
+    .fee-stat {
+        border-right: 0;
+        border-bottom: 1px solid #e6ece8;
+    }
+}
+
+@media (max-width: 650px) {
+    .fee-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .pay-fee-button {
+        width: 100%;
+    }
+}/* SYSTEM FEE */
+
+.system-fee-card {
+    background: #ffffff;
+    border: 1px solid #dce5df;
+}
+
+.fee-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 20px;
+    border-bottom: 1px solid #e6ece8;
+}
+
+.fee-eyebrow {
+    margin: 0 0 5px;
+    color: #24734a;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.fee-header h2 {
+    margin: 0;
+    color: #253129;
+    font-size: 15px;
+}
+
+.fee-header > div > p:last-child {
+    margin: 5px 0 0;
+    color: #7a877f;
+    font-size: 10px;
+}
+
+.pay-fee-button {
+    display: inline-flex;
+    min-height: 39px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 15px;
+    color: #ffffff;
+    background: #24734a;
+    border: 1px solid #24734a;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.pay-fee-button:hover:not(:disabled) {
+    background: #1e633f;
+}
+
+.pay-fee-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.fee-content {
+    display: grid;
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr))
+        minmax(240px, 0.8fr);
+}
+
+.fee-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px;
+    border-right: 1px solid #e6ece8;
+}
+
+.fee-stat > span {
+    color: #748178;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.fee-stat > strong {
+    color: #24734a;
+    font-size: 21px;
+    font-weight: 700;
+}
+
+.fee-stat > small {
+    color: #89958d;
+    font-size: 9px;
+}
+
+.fee-policy {
+    padding: 13px 20px;
+    background: #f7faf8;
+}
+
+.fee-policy > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 43px;
+    border-bottom: 1px solid #e2e9e4;
+}
+
+.fee-policy > div:last-child {
+    border-bottom: 0;
+}
+
+.fee-policy span {
+    color: #748178;
+    font-size: 10px;
+}
+
+.fee-policy strong {
+    color: #354239;
+    font-size: 11px;
+}
+
+@media (max-width: 800px) {
+    .fee-content {
+        grid-template-columns: 1fr;
+    }
+
+    .fee-stat {
+        border-right: 0;
+        border-bottom: 1px solid #e6ece8;
+    }
+}
+
+@media (max-width: 650px) {
+    .fee-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .pay-fee-button {
         width: 100%;
     }
 }
