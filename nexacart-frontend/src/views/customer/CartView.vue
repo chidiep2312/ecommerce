@@ -416,6 +416,18 @@ function clearCart() {
 
     cartStore.clearCart()
 }
+ function generateIdempotencyKey() {
+    if (
+        typeof crypto !== 'undefined' &&
+        typeof crypto.randomUUID === 'function'
+    ) {
+        return crypto.randomUUID()
+    }
+
+    return `nexacart-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}`
+}
 
 function goToCheckout() {
     selectionError.value = ''
@@ -479,7 +491,7 @@ function goToCheckout() {
             ...new Set(cartItemIds),
         ],
         idempotency_key:
-            crypto.randomUUID(),
+            generateIdempotencyKey(),
     }
 
     sessionStorage.setItem(
