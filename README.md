@@ -86,3 +86,9 @@ Ngoài chức năng thương mại điện tử, dự án cũng được sử d�
 * Invalid Order State Transition
 * Brute-force Protection
 * Secure Checkout Flow
+
+## Demo account
+Customer:customer@nexacart.test
+Seller:seller@nexacart.test
+Admin:admin@nexacart.test
+Password: password123
